@@ -1,6 +1,6 @@
 -- =====================================
 -- G O O N   S N I P E R
--- FULL COPY-PASTE VERSION
+-- FULL COPY-PASTE (OBSIDIAN SAFE)
 -- =====================================
 
 -- =========================
@@ -10,7 +10,6 @@ local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 
 local Obsidian = loadstring(game:HttpGet(repo .. "Library.lua"))()
 local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
 -- =========================
 -- CREATE WINDOW
@@ -22,7 +21,7 @@ local Window = Obsidian:CreateWindow({
 })
 
 -- =========================
--- CREATE TAB FIRST (CRITICAL)
+-- CREATE MAIN TAB FIRST
 -- =========================
 local MainTab = Window:AddTab("Main")
 
@@ -75,7 +74,7 @@ PetSniperSection:AddToggle("EnablePetSniper", {
 		if state and not getgenv().PetSniperThread then
 			getgenv().PetSniperThread = task.spawn(function()
 				while getgenv().PetSniperEnabled do
-					-- your sniper logic runs here
+					-- PET SNIPER LOGIC GOES HERE
 					task.wait(0.5)
 				end
 				getgenv().PetSniperThread = nil
@@ -85,15 +84,10 @@ PetSniperSection:AddToggle("EnablePetSniper", {
 })
 
 -- =========================
--- ATTACH MANAGERS LAST
+-- APPLY THEME MANAGER LAST
 -- =========================
 ThemeManager:SetLibrary(Obsidian)
-SaveManager:SetLibrary(Obsidian)
-
 ThemeManager:SetFolder("GoonSniper")
-SaveManager:SetFolder("GoonSniper")
-
-SaveManager:BuildConfigSection(Window)
 ThemeManager:ApplyToTab(Window)
 
-print("[Goon Sniper] UI Loaded Successfully")
+print("[Goon Sn]()

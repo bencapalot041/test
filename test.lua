@@ -90,4 +90,4 @@ ThemeManager:SetLibrary(Obsidian)
 ThemeManager:SetFolder("GoonSniper")
 ThemeManager:ApplyToTab(Window)
 
-print("[Goon Sn]()
+print("[Goon Sniper] Loaded successfully")

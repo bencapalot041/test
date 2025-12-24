@@ -1,161 +1,209 @@
--- [6] OBSIDIAN UI (POST-AUTH, MOBILE + PC SAFE)
-local function LoadSniperUI()
-    local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-    local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-    local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-    local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+-- GROW A GARDEN BOOTH SNIPER - WORKING VERSION (UI CONTROLLED)
 
-    local Options = Library.Options
-    local Toggles = Library.Toggles
+-- =========================
+-- GLOBAL CONTROL
+-- =========================
+getgenv().PetSniperEnabled = false
+getgenv().PetSniperThread = nil
 
-    local Window = Library:CreateWindow({
-        Title = "GOON SNIPER",
-        Footer = Version,
-        NotifySide = "Right",
-        ShowCustomCursor = true,
-    })
+-- =========================
+-- FILTERS
+-- =========================
+local Filters = {
+	["Koi"] = {23, 50},
+	["Mimic Octopus"] = {63.2, 1000},
+	["Peacock"] = {62, 1000},
+	["Raccoon"] = {0, 300},
+	["Kitsune"] = {0, 500},
+	["Rainbow Dilophosaurus"] = {0, 50000},
 
-    local Tabs = {
-        Main = Window:AddTab("Main", "crosshair"),
-        Filters = Window:AddTab("Filters", "list"),
-        Safety = Window:AddTab("Safety", "shield"),
-        Key = Window:AddKeyTab("Key System"),
-        UI = Window:AddTab("UI Settings", "settings"),
-    }
+	-- Gourmet Egg
+	["French Fry Ferret"] = {0,2},
+	["Pancake Mole"] = {0,2},
+	["Sushi Bear"] = {0,2},
+	["Spaghetti Sloth"] = {0,2},
+	["Bagel Bunny"] = {0,2},
 
-    -- =====================
-    -- MAIN TAB
-    -- =====================
-    local MainBox = Tabs.Main:AddLeftGroupbox("Sniper Control")
+	-- Night Egg
+	["Frog"] = {0,2},
+	["Mole"] = {0,2},
+	["Echo Frog"] = {0,2},
 
-    MainBox:AddToggle("SniperEnabled", {
-        Text = "Enable Sniper",
-        Default = getgenv().SniperEnabled,
-        Callback = function(v)
-            getgenv().SniperEnabled = v
-            SaveConfig()
-        end,
-    })
+	-- Zen Egg
+	["Shiba Inu"] = {0,2},
+	["Nihonzaru"] = {0,2},
+	["Tanuki"] = {0,2},
+	["Tanchozuru"] = {0,2},
+	["Kappa"] = {0,2},
 
-    MainBox:AddButton("Force Server Hop", function()
-        Hop()
-    end)
+	-- Paradise Egg
+	["Ostrich"] = {0,2},
+	["Capybara"] = {0,2},
+	["Scarlet Macaw"] = {0,2},
 
-    MainBox:AddLabel("Status: Controlled by sniper loop")
+	-- Anti-Bee Egg
+	["Wasp"] = {0,2},
+	["Tarantula Hawk"] = {0,2},
+	["Moth"] = {0,2},
+	["Butterfly"] = {0,2},
+	["Disco Bee"] = {0,2},
 
-    -- =====================
-    -- FILTERS TAB
-    -- =====================
-    local FilterBox = Tabs.Filters:AddLeftGroupbox("Pet Filters")
+	-- Bee Egg
+	["Bee"] = {0,2},
+	["Honey Bee"] = {0,2},
+	["Bear Bee"] = {0,2},
+	["Petal Bee"] = {0,2},
+	["Queen Bee"] = {0,2}
+}
 
-    FilterBox:AddDropdown("PetSelect", {
-        Text = "Select Pets",
-        Values = PetList,
-        Multi = true,
-        Searchable = true,
-        Callback = function(tbl)
-            for pet, enabled in pairs(tbl) do
-                if enabled and not getgenv().CurrentFilters[pet] then
-                    getgenv().CurrentFilters[pet] = {0, 9999999}
-                elseif not enabled then
-                    getgenv().CurrentFilters[pet] = nil
-                end
-            end
-            SaveConfig()
-        end,
-    })
-
-    FilterBox:AddInput("MinWeight", {
-        Text = "Min Weight",
-        Numeric = true,
-        Callback = function(v)
-            v = tonumber(v)
-            if not v then return end
-            for pet,_ in pairs(getgenv().CurrentFilters) do
-                getgenv().CurrentFilters[pet][1] = v
-            end
-            SaveConfig()
-        end,
-    })
-
-    FilterBox:AddInput("MaxPrice", {
-        Text = "Max Price",
-        Numeric = true,
-        Callback = function(v)
-            v = tonumber(v)
-            if not v then return end
-            for pet,_ in pairs(getgenv().CurrentFilters) do
-                getgenv().CurrentFilters[pet][2] = v
-            end
-            SaveConfig()
-        end,
-    })
-
-    -- =====================
-    -- SAFETY TAB
-    -- =====================
-    local SafetyBox = Tabs.Safety:AddLeftGroupbox("Safety")
-
-    SafetyBox:AddInput("Webhook", {
-        Text = "Discord Webhook",
-        Default = getgenv().WebhookURL,
-        Callback = function(v)
-            getgenv().WebhookURL = v
-            SaveConfig()
-        end,
-    })
-
-    SafetyBox:AddSlider("HopDelay", {
-        Text = "Auto-Hop Delay",
-        Min = 30,
-        Max = 300,
-        Default = getgenv().HopDelay or 60,
-        Suffix = "s",
-        Callback = function(v)
-            getgenv().HopDelay = v
-            SaveConfig()
-        end,
-    })
-
-    -- =====================
-    -- KEY TAB (REPLACES OLD KEY UI)
-    -- =====================
-    Tabs.Key:AddLabel({
-        Text = "Enter your access key below",
-        DoesWrap = true,
-    })
-
-    Tabs.Key:AddKeyBox(function(key)
-        if ValidateKey(key) then
-            if writefile then writefile(KeyFile, key) end
-            Library:Notify({
-                Title = "Access Granted",
-                Description = "Key accepted",
-                Time = 3,
-            })
-        else
-            Library:Notify({
-                Title = "Invalid Key",
-                Description = "Key rejected",
-                Time = 3,
-            })
-        end
-    end)
-
-    -- =====================
-    -- UI SETTINGS
-    -- =====================
-    ThemeManager:SetLibrary(Library)
-    SaveManager:SetLibrary(Library)
-
-    SaveManager:IgnoreThemeSettings()
-    SaveManager:SetIgnoreIndexes({})
-
-    ThemeManager:SetFolder("GoonSniper")
-    SaveManager:SetFolder("GoonSniper/Configs")
-
-    SaveManager:BuildConfigSection(Tabs.UI)
-    ThemeManager:ApplyToTab(Tabs.UI)
-
-    SaveManager:LoadAutoloadConfig()
+-- =========================
+-- GAME LOAD
+-- =========================
+if not game:IsLoaded() then
+	game.Loaded:Wait()
 end
+
+local Players = game:GetService("Players")
+repeat task.wait() until Players.LocalPlayer
+local player = Players.LocalPlayer
+
+-- =========================
+-- SERVER HOP
+-- =========================
+local SnipeLoop = math.random(1000,9999)
+getgenv().SnipeLoop = SnipeLoop
+
+local function Hop()
+	local Servers = {}
+
+	local function Scrape()
+		local URL = "https://games.roblox.com/v1/games/129954712878723/servers/Public?sortOrder=dsc&limit=100&excludeFullGames=true"
+		local D = game:HttpGet(URL)
+		return game.HttpService:JSONDecode(D)
+	end
+
+	local function TeleportServer()
+		if #Servers > 0 then
+			local sid = math.random(1, #Servers)
+			pcall(function()
+				game:GetService("TeleportService"):TeleportToPlaceInstance(
+					129954712878723,
+					Servers[sid],
+					player
+				)
+			end)
+		end
+	end
+
+	local function PlaceServers()
+		local scraped = Scrape()
+		for _, index in pairs(scraped.data) do
+			if index.playing and index.playing < 30 and index.playing > 15 then
+				table.insert(Servers, index.id)
+			end
+		end
+		TeleportServer()
+	end
+
+	PlaceServers()
+end
+
+task.spawn(function()
+	repeat task.wait(1)
+	until #game:GetService("NetworkClient"):GetChildren() == 0
+	pcall(Hop)
+end)
+
+-- =========================
+-- BOOTH DATA
+-- =========================
+local Controller = require(game.ReplicatedStorage.Modules.TradeBoothControllers.TradeBoothController)
+local v2 = require(game.ReplicatedStorage.Modules.DataService)
+
+if not getgenv().boothData then
+	getgenv().boothData = getupvalues(Controller.GetPlayerBoothData)[2]:GetDataAsync()
+end
+
+-- =========================
+-- LISTINGS
+-- =========================
+local function getAllListings()
+	local Data = getgenv().boothData
+	local Listings = {}
+
+	for BoothId, BoothData in pairs(Data.Booths) do
+		local Owner = BoothData.Owner
+		if not Owner or not Data.Players[Owner] then continue end
+
+		for ListingId, ListingData in pairs(Data.Players[Owner].Listings) do
+			if ListingData.ItemType == "Pet" then
+				local ItemData = Data.Players[Owner].Items[ListingData.ItemId]
+				if ItemData and not ItemData.PetData.IsFavorite then
+					local Weight = ItemData.PetData.BaseWeight * 1.1
+					table.insert(Listings, {
+						Player = nil,
+						ListingId = ListingId,
+						PetType = ItemData.PetType,
+						PetMax = Weight * 10,
+						Price = ListingData.Price
+					})
+				end
+			end
+		end
+	end
+
+	return Listings
+end
+
+-- =========================
+-- MAIN LOOP (UNCHANGED)
+-- =========================
+function MainLoop()
+	local Listings = getAllListings()
+
+	for _, Data in pairs(Listings) do
+		local Filter = Filters[Data.PetType]
+		if Filter then
+			local MinWeight, MaxPrice = Filter[1], Filter[2]
+			if Data.PetMax >= MinWeight and Data.Price <= MaxPrice then
+				if Data.Price <= v2:GetData().TradeData.Tokens then
+					game.ReplicatedStorage.GameEvents.TradeEvents.Booths.BuyListing:InvokeServer(
+						Data.Player,
+						Data.ListingId
+					)
+				end
+			end
+		end
+	end
+end
+
+-- =========================
+-- CONTROLLED START / STOP
+-- =========================
+local function StartPetSniper()
+	if getgenv().PetSniperThread then return end
+
+	getgenv().PetSniperThread = task.spawn(function()
+		while getgenv().PetSniperEnabled do
+			pcall(MainLoop)
+			task.wait(0.5)
+		end
+		getgenv().PetSniperThread = nil
+	end)
+end
+
+-- =========================
+-- UI HOOK (ADD TO SECTION)
+-- =========================
+-- Paste ONLY this part into your UI section:
+--
+-- PetSniperSection:AddToggle("EnablePetSniper", {
+--     Text = "Enable Pet Sniper",
+--     Default = false,
+--     Callback = function(state)
+--         getgenv().PetSniperEnabled = state
+--         if state then
+--             StartPetSniper()
+--         end
+--     end
+-- })

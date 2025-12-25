@@ -2,6 +2,14 @@ Rayfield
 
 --// Boot Rayfield Library
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+
+if not success or not Rayfield then
+    warn("Rayfield failed to load")
+    return
+end
 
 --// Create Window
 local Window = Rayfield:CreateWindow({

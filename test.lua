@@ -73,7 +73,11 @@ local Tabs = {
 	UI = Window:AddTab("UI Settings", "settings")
 }
 
-local MainBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
+-- Create collapsible container
+local SniperTabbox = Tabs.Main:AddLeftTabbox("Sniper Control")
+
+-- Create the actual tab INSIDE the tabbox
+local SniperBox = SniperTabbox:AddTab("Controls")
 local FilterBox = Tabs.Main:AddRightGroupbox("Pet Filters", "paw-print")
 
 local WebhookBox = Tabs.Webhook:AddLeftGroupbox("Discord", "link")

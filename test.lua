@@ -60,7 +60,7 @@ local ThemeManager = loadstring(game:HttpGet(repo.."addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
 
 local Window = Library:CreateWindow({
-	Title = "Grow A Garden – Booth Sniper",
+	Title = "Goons Hub",
 	Footer = "Obsidian UI",
 	Icon = "target",
 	Center = true,
@@ -128,15 +128,15 @@ FilterBox:AddSlider("MinWeight", {
 	Text = "Min Weight",
 	Default = 0,
 	Min = 0,
-	Max = 1000,
+	Max = 114.44,
 	Rounding = 1
 })
 
 FilterBox:AddSlider("MaxPrice", {
 	Text = "Max Price",
-	Default = 1000,
+	Default = 0,
 	Min = 0,
-	Max = 100000,
+	Max = 114.44,
 	Rounding = 0
 })
 

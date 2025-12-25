@@ -126,14 +126,14 @@ end
 table.sort(PetNames)
 
 FilterBox:AddDropdown("PetSelector", {
-	Text = "Pet Type (Search + Multi)",
+	Text = "Pet To List",
 	Values = PetNames,
 	Multi = true,
 	Searchable = true
 })
 
 FilterBox:AddInput("MinKGInput", {
-	Text = "Min Weight (KG @ Level 100)",
+	Text = "Min Weight (KG)",
 	Placeholder = "e.g. 60",
 	Numeric = true,
 	Callback = function(v)

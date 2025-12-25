@@ -1,13 +1,15 @@
+Rayfield
+
 --// Boot Rayfield Library
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 --// Create Window
 local Window = Rayfield:CreateWindow({
-    Name = "Jay Hub",
+    Name = "Goons Hub",
     Icon = "home",
-    LoadingTitle = "Jay Hub",
+    LoadingTitle = "Goons Hub",
     LoadingSubtitle = "Auto Booth System",
-    ShowText = "Jay Hub",
+    ShowText = "Goons Hub",
     Theme = "DarkBlue",
 
     ToggleUIKeybind = "K",
@@ -17,7 +19,7 @@ local Window = Rayfield:CreateWindow({
 
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "JayHub",
+        FolderName = "Goons Hub",
         FileName = "AutoBoothConfig"
     },
 
@@ -89,7 +91,7 @@ MainTab:CreateSection("KG Filter")
 -- Min KG Slider
 local MinKG = MainTab:CreateSlider({
     Name = "Minimum KG",
-    Range = {0, 100000},
+    Range = {0, 114.44},
     Increment = 1,
     Suffix = " KG",
     CurrentValue = 0,
@@ -101,7 +103,7 @@ local MinKG = MainTab:CreateSlider({
 -- Max KG Slider
 local MaxKG = MainTab:CreateSlider({
     Name = "Maximum KG",
-    Range = {0, 100000},
+    Range = {0, 144.44},
     Increment = 1,
     Suffix = " KG",
     CurrentValue = 0,

@@ -1,6 +1,6 @@
 -- =====================================
 -- G O O N   S N I P E R
--- FULL COPY-PASTE (OBSIDIAN SAFE)
+-- FULL COPY-PASTE (OBSIDIAN CLICKABLE)
 -- =====================================
 
 -- =========================
@@ -15,79 +15,81 @@ local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))
 -- CREATE WINDOW
 -- =========================
 local Window = Obsidian:CreateWindow({
-	Title = "Goon Sniper",
-	Center = true,
-	AutoShow = true
+    Title = "Goon Sniper",
+    Center = true,
+    AutoShow = true
 })
 
 -- =========================
--- CREATE MAIN TAB FIRST
+-- CREATE MAIN TAB
 -- =========================
 local MainTab = Window:AddTab("Main")
 
 -- =========================
--- ACCORDION SYSTEM
+-- ACCORDION SYSTEM (OBSIDIAN SAFE)
 -- =========================
 local OpenSection = nil
 
-local function CreateSection(title, icon)
-	local SectionBox = MainTab:AddLeftGroupbox(title)
-	SectionBox:SetVisible(false)
+local function CreateAccordion(title, icon)
+    -- 1️⃣ CLICKABLE HEADER (THIS is what you click)
+    MainTab:AddButton(icon .. " " .. title, function()
+        if OpenSection and OpenSection ~= Content then
+            OpenSection:SetVisible(false)
+        end
 
-	MainTab:AddButton(icon .. " " .. title, function()
-		if OpenSection and OpenSection ~= SectionBox then
-			OpenSection:SetVisible(false)
-		end
+        if Content:GetVisible() then
+            Content:SetVisible(false)
+            OpenSection = nil
+        else
+            Content:SetVisible(true)
+            OpenSection = Content
+        end
+    end)
 
-		if SectionBox:GetVisible() then
-			SectionBox:SetVisible(false)
-			OpenSection = nil
-		else
-			SectionBox:SetVisible(true)
-			OpenSection = SectionBox
-		end
-	end)
+    -- 2️⃣ CONTENT BOX (NOT CLICKABLE)
+    local Content = MainTab:AddLeftGroupbox(title .. " Settings")
+    Content:SetVisible(false)
 
-	return SectionBox
+    return Content
 end
 
 -- =========================
 -- PET SNIPER SECTION
 -- =========================
-local PetSniperSection = CreateSection("Pet Sniper", "🎯")
+local PetSniperSection = CreateAccordion("Pet Sniper", "🎯")
 
 -- =========================
--- PET SNIPER CONTROL
+-- PET SNIPER STATE
 -- =========================
 getgenv().PetSniperEnabled = false
 getgenv().PetSniperThread = nil
 
 -- =========================
--- PET SNIPER TOGGLE
+-- PET SNIPER TOGGLE (INSIDE CONTENT)
 -- =========================
 PetSniperSection:AddToggle("EnablePetSniper", {
-	Text = "Enable Pet Sniper",
-	Default = false,
-	Callback = function(state)
-		getgenv().PetSniperEnabled = state
+    Text = "Enable Pet Sniper",
+    Default = false,
+    Callback = function(state)
+        getgenv().PetSniperEnabled = state
 
-		if state and not getgenv().PetSniperThread then
-			getgenv().PetSniperThread = task.spawn(function()
-				while getgenv().PetSniperEnabled do
-					-- PET SNIPER LOGIC GOES HERE
-					task.wait(0.5)
-				end
-				getgenv().PetSniperThread = nil
-			end)
-		end
-	end
+        if state and not getgenv().PetSniperThread then
+            getgenv().PetSniperThread = task.spawn(function()
+                while getgenv().PetSniperEnabled do
+                    -- PET SNIPER LOGIC GOES HERE
+                    task.wait(0.5)
+                end
+                getgenv().PetSniperThread = nil
+            end)
+        end
+    end
 })
 
 -- =========================
--- APPLY THEME MANAGER LAST
+-- APPLY THEME (LAST)
 -- =========================
 ThemeManager:SetLibrary(Obsidian)
 ThemeManager:SetFolder("GoonSniper")
 ThemeManager:ApplyToTab(Window)
 
-print("[Goon Sniper] Loaded successfully")
+print("[Goon Sniper] UI Loaded & Clickable")

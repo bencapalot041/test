@@ -88,27 +88,37 @@ MainTab:CreateDivider()
 
 MainTab:CreateSection("KG Filter")
 
--- Min KG Slider
-local MinKG = MainTab:CreateSlider({
+-- Min KG Input
+local MinKG = MainTab:CreateInput({
     Name = "Minimum KG",
-    Range = {0, 114.44},
-    Increment = 1,
-    Suffix = " KG",
-    CurrentValue = 0,
+    CurrentValue = "",
+    PlaceholderText = "Enter minimum KG",
+    RemoveTextAfterFocusLost = false,
     Flag = "MinKG",
-    Callback = function(Value)
+    Callback = function(Text)
+        local value = tonumber(Text)
+        if value then
+            -- valid number
+        else
+            -- invalid input (non-number)
+        end
     end
 })
 
--- Max KG Slider
-local MaxKG = MainTab:CreateSlider({
+-- Max KG Input
+local MaxKG = MainTab:CreateInput({
     Name = "Maximum KG",
-    Range = {0, 144.44},
-    Increment = 1,
-    Suffix = " KG",
-    CurrentValue = 0,
+    CurrentValue = "",
+    PlaceholderText = "Enter maximum KG",
+    RemoveTextAfterFocusLost = false,
     Flag = "MaxKG",
-    Callback = function(Value)
+    Callback = function(Text)
+        local value = tonumber(Text)
+        if value then
+            -- valid number
+        else
+            -- invalid input (non-number)
+        end
     end
 })
 

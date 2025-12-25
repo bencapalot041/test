@@ -60,7 +60,7 @@ local ThemeManager = loadstring(game:HttpGet(repo.."addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
 
 local Window = Library:CreateWindow({
-	Title = "Goons Hub",
+	Title = "Grow A Garden – Booth Sniper",
 	Footer = "Obsidian UI",
 	Icon = "target",
 	Center = true,
@@ -86,18 +86,10 @@ getgenv().ScanDelay = 0.5
 getgenv().WebhookURL = ""
 
 --==================================================
--- SNIPER CONTROL (LOCKED)
+-- SNIPER CONTROL (NO LOCK)
 --==================================================
 
-MainBox:AddDropdown("SniperAccess", {
-	Text = "Sniper Access",
-	Values = { "Locked", "Unlocked" },
-	Default = "Locked"
-})
-
-local SniperControls = MainBox:AddDependencyBox()
-
-SniperControls:AddToggle("EnableSniper", {
+MainBox:AddToggle("EnableSniper", {
 	Text = "Enable Booth Sniper",
 	Default = false,
 	Callback = function(v)
@@ -105,7 +97,7 @@ SniperControls:AddToggle("EnableSniper", {
 	end
 })
 
-SniperControls:AddSlider("ScanDelay", {
+MainBox:AddSlider("ScanDelay", {
 	Text = "Scan Delay",
 	Default = 0.5,
 	Min = 0.1,
@@ -115,10 +107,6 @@ SniperControls:AddSlider("ScanDelay", {
 	Callback = function(v)
 		getgenv().ScanDelay = v
 	end
-})
-
-SniperControls:SetupDependencies({
-	{ Library.Options.SniperAccess, "Unlocked" }
 })
 
 --==================================================
@@ -180,7 +168,6 @@ FilterBox:AddInput("MaxPrice", {
 
 Library.Options.SelectedPets:OnChanged(function()
 	local selected = Library.Options.SelectedPets.Value or {}
-
 	for pet in pairs(selected) do
 		if Filters[pet] then
 			Library.Options.MinWeight:SetValue(tostring(Filters[pet][1]))
@@ -231,7 +218,7 @@ ThemeManager:LoadDefault()
 SaveManager:LoadAutoloadConfig()
 
 --==================================================
--- SNIPER LOOP (GATED)
+-- SNIPER LOOP
 --==================================================
 
 task.spawn(function()

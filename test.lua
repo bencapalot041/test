@@ -86,7 +86,7 @@ getgenv().ScanDelay = 0.5
 getgenv().WebhookURL = ""
 
 --==================================================
--- SNIPER CONTROLS
+-- SNIPER CONTROL (LOCKED)
 --==================================================
 
 MainBox:AddDropdown("SniperAccess", {
@@ -122,7 +122,7 @@ SniperControls:SetupDependencies({
 })
 
 --==================================================
--- PET FILTERS (SEARCH + MULTI SELECT)
+-- PET FILTERS (SEARCH + MULTI + TEXT INPUTS)
 --==================================================
 
 local PetNames = {}
@@ -140,47 +140,52 @@ FilterBox:AddDropdown("SelectedPets", {
 	Default = {}
 })
 
-FilterBox:AddSlider("MinWeight", {
-	Text = "Min Weight",
-	Default = 0,
-	Min = 0,
-	Max = 1000,
-	Rounding = 1
+FilterBox:AddInput("MinWeight", {
+	Text = "Min Weight (KG)",
+	Default = "0",
+	Placeholder = "e.g. 62.2",
+	Numeric = true,
+	Finished = true,
+	Callback = function(v)
+		local value = tonumber(v)
+		if not value then return end
+
+		local selected = Library.Options.SelectedPets.Value or {}
+		for pet in pairs(selected) do
+			if Filters[pet] then
+				Filters[pet][1] = value
+			end
+		end
+	end
 })
 
-FilterBox:AddSlider("MaxPrice", {
-	Text = "Max Price",
-	Default = 1000,
-	Min = 0,
-	Max = 100000,
-	Rounding = 0
+FilterBox:AddInput("MaxPrice", {
+	Text = "Max Price (Tokens)",
+	Default = "1000",
+	Placeholder = "e.g. 20000",
+	Numeric = true,
+	Finished = true,
+	Callback = function(v)
+		local value = tonumber(v)
+		if not value then return end
+
+		local selected = Library.Options.SelectedPets.Value or {}
+		for pet in pairs(selected) do
+			if Filters[pet] then
+				Filters[pet][2] = value
+			end
+		end
+	end
 })
 
 Library.Options.SelectedPets:OnChanged(function()
 	local selected = Library.Options.SelectedPets.Value or {}
+
 	for pet in pairs(selected) do
 		if Filters[pet] then
-			Library.Options.MinWeight:SetValue(Filters[pet][1])
-			Library.Options.MaxPrice:SetValue(Filters[pet][2])
+			Library.Options.MinWeight:SetValue(tostring(Filters[pet][1]))
+			Library.Options.MaxPrice:SetValue(tostring(Filters[pet][2]))
 			break
-		end
-	end
-end)
-
-Library.Options.MinWeight:OnChanged(function(v)
-	local selected = Library.Options.SelectedPets.Value or {}
-	for pet in pairs(selected) do
-		if Filters[pet] then
-			Filters[pet][1] = v
-		end
-	end
-end)
-
-Library.Options.MaxPrice:OnChanged(function(v)
-	local selected = Library.Options.SelectedPets.Value or {}
-	for pet in pairs(selected) do
-		if Filters[pet] then
-			Filters[pet][2] = v
 		end
 	end
 end)

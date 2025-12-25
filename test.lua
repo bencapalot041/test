@@ -19,7 +19,7 @@ local Window = Rayfield:CreateWindow({
 
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "Goons Hub",
+        FolderName = "GoonsHub",
         FileName = "AutoBoothConfig"
     },
 

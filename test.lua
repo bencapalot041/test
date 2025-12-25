@@ -6,7 +6,7 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait() until game.Players.LocalPlayer
 
 --==================================================
--- FILTER DATA (UNCHANGED)
+-- FILTER DATA
 --==================================================
 
 local Filters = {
@@ -75,11 +75,10 @@ local Tabs = {
 
 local MainBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
 local FilterBox = Tabs.Main:AddRightGroupbox("Pet Filters", "paw-print")
-
 local WebhookBox = Tabs.Webhook:AddLeftGroupbox("Discord", "link")
 
 --==================================================
--- UI STATE
+-- STATE
 --==================================================
 
 getgenv().SniperEnabled = false
@@ -87,10 +86,18 @@ getgenv().ScanDelay = 0.5
 getgenv().WebhookURL = ""
 
 --==================================================
--- MAIN CONTROLS
+-- SNIPER CONTROLS
 --==================================================
 
-MainBox:AddToggle("EnableSniper", {
+MainBox:AddDropdown("SniperAccess", {
+	Text = "Sniper Access",
+	Values = { "Locked", "Unlocked" },
+	Default = "Locked"
+})
+
+local SniperControls = MainBox:AddDependencyBox()
+
+SniperControls:AddToggle("EnableSniper", {
 	Text = "Enable Booth Sniper",
 	Default = false,
 	Callback = function(v)
@@ -98,7 +105,7 @@ MainBox:AddToggle("EnableSniper", {
 	end
 })
 
-MainBox:AddSlider("ScanDelay", {
+SniperControls:AddSlider("ScanDelay", {
 	Text = "Scan Delay",
 	Default = 0.5,
 	Min = 0.1,
@@ -110,18 +117,27 @@ MainBox:AddSlider("ScanDelay", {
 	end
 })
 
+SniperControls:SetupDependencies({
+	{ Library.Options.SniperAccess, "Unlocked" }
+})
+
 --==================================================
--- FILTER EDITOR
+-- PET FILTERS (SEARCH + MULTI SELECT)
 --==================================================
 
 local PetNames = {}
-for k in pairs(Filters) do table.insert(PetNames, k) end
+for name in pairs(Filters) do
+	table.insert(PetNames, name)
+end
 table.sort(PetNames)
 
-FilterBox:AddDropdown("SelectedPet", {
+FilterBox:AddDropdown("SelectedPets", {
 	Text = "Pet Type",
 	Values = PetNames,
-	Default = 1
+	Multi = true,
+	Searchable = true,
+	AllowNull = true,
+	Default = {}
 })
 
 FilterBox:AddSlider("MinWeight", {
@@ -140,22 +156,33 @@ FilterBox:AddSlider("MaxPrice", {
 	Rounding = 0
 })
 
-Library.Options.SelectedPet:OnChanged(function()
-	local pet = Library.Options.SelectedPet.Value
-	if Filters[pet] then
-		Library.Options.MinWeight:SetValue(Filters[pet][1])
-		Library.Options.MaxPrice:SetValue(Filters[pet][2])
+Library.Options.SelectedPets:OnChanged(function()
+	local selected = Library.Options.SelectedPets.Value or {}
+	for pet in pairs(selected) do
+		if Filters[pet] then
+			Library.Options.MinWeight:SetValue(Filters[pet][1])
+			Library.Options.MaxPrice:SetValue(Filters[pet][2])
+			break
+		end
 	end
 end)
 
 Library.Options.MinWeight:OnChanged(function(v)
-	local pet = Library.Options.SelectedPet.Value
-	if Filters[pet] then Filters[pet][1] = v end
+	local selected = Library.Options.SelectedPets.Value or {}
+	for pet in pairs(selected) do
+		if Filters[pet] then
+			Filters[pet][1] = v
+		end
+	end
 end)
 
 Library.Options.MaxPrice:OnChanged(function(v)
-	local pet = Library.Options.SelectedPet.Value
-	if Filters[pet] then Filters[pet][2] = v end
+	local selected = Library.Options.SelectedPets.Value or {}
+	for pet in pairs(selected) do
+		if Filters[pet] then
+			Filters[pet][2] = v
+		end
+	end
 end)
 
 --==================================================
@@ -174,15 +201,13 @@ WebhookBox:AddButton({
 	Text = "Test Webhook",
 	Func = function()
 		if getgenv().WebhookURL == "" then return end
-		local data = {
-			content = "✅ Booth Sniper Webhook Connected"
-		}
-		local headers = {["content-type"] = "application/json"}
 		(request or http_request)({
 			Url = getgenv().WebhookURL,
 			Method = "POST",
-			Headers = headers,
-			Body = game.HttpService:JSONEncode(data)
+			Headers = {["content-type"] = "application/json"},
+			Body = game.HttpService:JSONEncode({
+				content = "✅ Booth Sniper webhook connected"
+			})
 		})
 	end
 })

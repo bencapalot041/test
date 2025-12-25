@@ -1,144 +1,215 @@
---// Obsidian UI Example – Executor Ready
---// Clean base you can extend safely
+--==================================================
+-- GROW A GARDEN BOOTH SNIPER + OBSIDIAN UI
+--==================================================
 
--- =========================
--- Load Library & Addons
--- =========================
-local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+if not game:IsLoaded() then game.Loaded:Wait() end
+repeat task.wait() until game.Players.LocalPlayer
 
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+--==================================================
+-- FILTER DATA (UNCHANGED)
+--==================================================
 
--- =========================
--- Create Window
--- =========================
-local Window = Library:CreateWindow({
-    Title = "Obsidian Example UI",
-    Footer = "example build",
-    Icon = "home",
-    Center = true,
-    AutoShow = true,
-    NotifySide = "Right",
-    EnableSidebarResize = true,
-})
+local Filters = {
+	["Koi"] = {23, 50},
+	["Mimic Octopus"] = {63.2, 1000},
+	["Peacock"] = {62, 1000}, 
+	["Raccoon"] = {0, 300},
+	["Kitsune"] = {0, 500},
+	["Rainbow Dilophosaurus"] = {0, 50000},
 
--- =========================
--- Tabs
--- =========================
-local Tabs = {
-    Main = Window:AddTab("Main", "user"),
-    Settings = Window:AddTab("UI Settings", "settings"),
+	["French Fry Ferret"] = {0,2},
+	["Pancake Mole"] = {0,2},
+	["Sushi Bear"] = {0,2},
+	["Spaghetti Sloth"] = {0,2},
+	["Bagel Bunny"] = {0,2},
+
+	["Frog"] = {0,2},
+	["Mole"] = {0,2},
+	["Echo Frog"] = {0,2},
+
+	["Shiba Inu"] = {0,2},
+	["Nihonzaru"] = {0,2},
+	["Tanuki"] = {0,2},
+	["Tanchozuru"] = {0,2},
+	["Kappa"] = {0,2},
+
+	["Ostrich"] = {0,2},
+	["Capybara"] = {0,2},
+	["Scarlet Macaw"] = {0,2},
+
+	["Wasp"] = {0,2},
+	["Tarantula Hawk"] = {0,2},
+	["Moth"] = {0,2},
+	["Butterfly"] = {0,2},
+	["Disco Bee"] = {0,2},
+
+	["Bee"] = {0,2},
+	["Honey Bee"] = {0,2},
+	["Bear Bee"] = {0,2},
+	["Petal Bee"] = {0,2},
+	["Queen Bee"] = {0,2}
 }
 
--- =========================
--- Main Tab Groupboxes
--- =========================
-local MainLeft = Tabs.Main:AddLeftGroupbox("Main Features", "rocket")
-local MainRight = Tabs.Main:AddRightGroupbox("Settings", "wrench")
+--==================================================
+-- OBSIDIAN UI
+--==================================================
 
--- =========================
--- UI Elements (Main)
--- =========================
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo.."Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo.."addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
 
--- Toggle
-MainLeft:AddToggle("AutoFarm", {
-    Text = "Enable Auto Farm",
-    Default = false,
+local Window = Library:CreateWindow({
+	Title = "Grow A Garden – Booth Sniper",
+	Footer = "Obsidian UI",
+	Icon = "target",
+	Center = true,
+	AutoShow = true
 })
 
--- Slider
-MainLeft:AddSlider("FarmSpeed", {
-    Text = "Farm Speed",
-    Default = 50,
-    Min = 1,
-    Max = 100,
-    Rounding = 0,
-    Suffix = "%",
+local Tabs = {
+	Main = Window:AddTab("Main", "rocket"),
+	Webhook = Window:AddTab("Webhook", "link"),
+	UI = Window:AddTab("UI Settings", "settings")
+}
+
+local MainBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
+local FilterBox = Tabs.Main:AddRightGroupbox("Pet Filters", "paw-print")
+
+local WebhookBox = Tabs.Webhook:AddLeftGroupbox("Discord", "link")
+
+--==================================================
+-- UI STATE
+--==================================================
+
+getgenv().SniperEnabled = false
+getgenv().ScanDelay = 0.5
+getgenv().WebhookURL = ""
+
+--==================================================
+-- MAIN CONTROLS
+--==================================================
+
+MainBox:AddToggle("EnableSniper", {
+	Text = "Enable Booth Sniper",
+	Default = false,
+	Callback = function(v)
+		getgenv().SniperEnabled = v
+	end
 })
 
--- Dropdown
-MainLeft:AddDropdown("FarmMode", {
-    Text = "Farm Mode",
-    Values = { "Safe", "Fast", "Insane" },
-    Default = 1,
+MainBox:AddSlider("ScanDelay", {
+	Text = "Scan Delay",
+	Default = 0.5,
+	Min = 0.1,
+	Max = 3,
+	Rounding = 1,
+	Suffix = "s",
+	Callback = function(v)
+		getgenv().ScanDelay = v
+	end
 })
 
--- Button
-MainRight:AddButton({
-    Text = "Print Status",
-    Func = function()
-        print("AutoFarm:", Library.Toggles.AutoFarm.Value)
-        print("Speed:", Library.Options.FarmSpeed.Value)
-        print("Mode:", Library.Options.FarmMode.Value)
-        Library:Notify("Status printed to console", 3)
-    end
+--==================================================
+-- FILTER EDITOR
+--==================================================
+
+local PetNames = {}
+for k in pairs(Filters) do table.insert(PetNames, k) end
+table.sort(PetNames)
+
+FilterBox:AddDropdown("SelectedPet", {
+	Text = "Pet Type",
+	Values = PetNames,
+	Default = 1
 })
 
--- Divider
-MainRight:AddDivider("Danger Zone")
-
--- Risky Button
-MainRight:AddButton({
-    Text = "Unload UI",
-    Risky = true,
-    Func = function()
-        Library:Unload()
-    end
+FilterBox:AddSlider("MinWeight", {
+	Text = "Min Weight",
+	Default = 0,
+	Min = 0,
+	Max = 1000,
+	Rounding = 1
 })
 
--- =========================
--- Dependency Example
--- =========================
-local DepBox = MainLeft:AddDependencyBox()
-
-DepBox:AddSlider("AdvancedPower", {
-    Text = "Advanced Power",
-    Default = 10,
-    Min = 1,
-    Max = 50,
+FilterBox:AddSlider("MaxPrice", {
+	Text = "Max Price",
+	Default = 1000,
+	Min = 0,
+	Max = 100000,
+	Rounding = 0
 })
 
-DepBox:SetupDependencies({
-    { Library.Toggles.AutoFarm, true }
+Library.Options.SelectedPet:OnChanged(function()
+	local pet = Library.Options.SelectedPet.Value
+	if Filters[pet] then
+		Library.Options.MinWeight:SetValue(Filters[pet][1])
+		Library.Options.MaxPrice:SetValue(Filters[pet][2])
+	end
+end)
+
+Library.Options.MinWeight:OnChanged(function(v)
+	local pet = Library.Options.SelectedPet.Value
+	if Filters[pet] then Filters[pet][1] = v end
+end)
+
+Library.Options.MaxPrice:OnChanged(function(v)
+	local pet = Library.Options.SelectedPet.Value
+	if Filters[pet] then Filters[pet][2] = v end
+end)
+
+--==================================================
+-- WEBHOOK
+--==================================================
+
+WebhookBox:AddInput("WebhookURL", {
+	Text = "Discord Webhook",
+	Placeholder = "https://discord.com/api/webhooks/...",
+	Callback = function(v)
+		getgenv().WebhookURL = v
+	end
 })
 
--- =========================
--- UI Settings Tab
--- =========================
+WebhookBox:AddButton({
+	Text = "Test Webhook",
+	Func = function()
+		if getgenv().WebhookURL == "" then return end
+		local data = {
+			content = "✅ Booth Sniper Webhook Connected"
+		}
+		local headers = {["content-type"] = "application/json"}
+		(request or http_request)({
+			Url = getgenv().WebhookURL,
+			Method = "POST",
+			Headers = headers,
+			Body = game.HttpService:JSONEncode(data)
+		})
+	end
+})
+
+--==================================================
+-- THEME / SAVE
+--==================================================
+
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 
-ThemeManager:SetFolder("MyScriptHub")
-SaveManager:SetFolder("MyScriptHub/ExampleUI")
+ThemeManager:ApplyToTab(Tabs.UI)
+SaveManager:BuildConfigSection(Tabs.UI)
 
--- Ignore menu keybind if you add one later
-SaveManager:SetIgnoreIndexes({})
-
--- Build UI
-ThemeManager:ApplyToTab(Tabs.Settings)
-SaveManager:BuildConfigSection(Tabs.Settings)
-
--- Load defaults
 ThemeManager:LoadDefault()
 SaveManager:LoadAutoloadConfig()
 
--- =========================
--- Callbacks (after UI creation)
--- =========================
-Library.Toggles.AutoFarm:OnChanged(function(state)
-    print("AutoFarm toggled:", state)
+--==================================================
+-- SNIPER LOOP (GATED)
+--==================================================
+
+task.spawn(function()
+	while true do
+		task.wait(getgenv().ScanDelay)
+		if not getgenv().SniperEnabled then continue end
+		pcall(MainLoop)
+	end
 end)
 
-Library.Options.FarmSpeed:OnChanged(function(value)
-    print("Farm speed:", value)
-end)
-
-Library.Options.FarmMode:OnChanged(function(value)
-    print("Farm mode:", value)
-end)
-
--- =========================
--- Ready
--- =========================
-Library:Notify("UI Loaded Successfully", 4)
+Library:Notify("Booth Sniper Loaded", 4)

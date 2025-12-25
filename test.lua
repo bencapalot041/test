@@ -1,53 +1,58 @@
 --==================================================
--- GROW A GARDEN BOOTH SNIPER + OBSIDIAN UI
+-- GROW A GARDEN BOOTH SNIPER (NORMALIZED @ LEVEL 100)
+-- OBSIDIAN UI - FINAL
 --==================================================
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait() until game.Players.LocalPlayer
 
 --==================================================
+-- SERVICES
+--==================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+
+--==================================================
 -- FILTER DATA
 --==================================================
 
 local Filters = {
-	["Koi"] = {23, 50},
-	["Mimic Octopus"] = {63.2, 1000},
-	["Peacock"] = {62, 1000}, 
-	["Raccoon"] = {0, 300},
-	["Kitsune"] = {0, 500},
-	["Rainbow Dilophosaurus"] = {0, 50000},
-
-	["French Fry Ferret"] = {0,2},
-	["Pancake Mole"] = {0,2},
-	["Sushi Bear"] = {0,2},
-	["Spaghetti Sloth"] = {0,2},
-	["Bagel Bunny"] = {0,2},
-
-	["Frog"] = {0,2},
-	["Mole"] = {0,2},
-	["Echo Frog"] = {0,2},
-
-	["Shiba Inu"] = {0,2},
-	["Nihonzaru"] = {0,2},
-	["Tanuki"] = {0,2},
-	["Tanchozuru"] = {0,2},
-	["Kappa"] = {0,2},
-
-	["Ostrich"] = {0,2},
-	["Capybara"] = {0,2},
-	["Scarlet Macaw"] = {0,2},
-
-	["Wasp"] = {0,2},
-	["Tarantula Hawk"] = {0,2},
-	["Moth"] = {0,2},
-	["Butterfly"] = {0,2},
-	["Disco Bee"] = {0,2},
-
-	["Bee"] = {0,2},
-	["Honey Bee"] = {0,2},
-	["Bear Bee"] = {0,2},
-	["Petal Bee"] = {0,2},
-	["Queen Bee"] = {0,2}
+	["Koi"] = { MinKG = 0, MaxPrice = math.huge },
+	["Mimic Octopus"] = { MinKG = 0, MaxPrice = math.huge },
+	["Peacock"] = { MinKG = 0, MaxPrice = math.huge },
+	["Raccoon"] = { MinKG = 0, MaxPrice = math.huge },
+	["Kitsune"] = { MinKG = 0, MaxPrice = math.huge },
+	["Rainbow Dilophosaurus"] = { MinKG = 0, MaxPrice = math.huge },
+	["French Fry Ferret"] = { MinKG = 0, MaxPrice = math.huge },
+	["Pancake Mole"] = { MinKG = 0, MaxPrice = math.huge },
+	["Sushi Bear"] = { MinKG = 0, MaxPrice = math.huge },
+	["Spaghetti Sloth"] = { MinKG = 0, MaxPrice = math.huge },
+	["Bagel Bunny"] = { MinKG = 0, MaxPrice = math.huge },
+	["Frog"] = { MinKG = 0, MaxPrice = math.huge },
+	["Mole"] = { MinKG = 0, MaxPrice = math.huge },
+	["Echo Frog"] = { MinKG = 0, MaxPrice = math.huge },
+	["Shiba Inu"] = { MinKG = 0, MaxPrice = math.huge },
+	["Nihonzaru"] = { MinKG = 0, MaxPrice = math.huge },
+	["Tanuki"] = { MinKG = 0, MaxPrice = math.huge },
+	["Tanchozuru"] = { MinKG = 0, MaxPrice = math.huge },
+	["Kappa"] = { MinKG = 0, MaxPrice = math.huge },
+	["Ostrich"] = { MinKG = 0, MaxPrice = math.huge },
+	["Capybara"] = { MinKG = 0, MaxPrice = math.huge },
+	["Scarlet Macaw"] = { MinKG = 0, MaxPrice = math.huge },
+	["Wasp"] = { MinKG = 0, MaxPrice = math.huge },
+	["Tarantula Hawk"] = { MinKG = 0, MaxPrice = math.huge },
+	["Moth"] = { MinKG = 0, MaxPrice = math.huge },
+	["Butterfly"] = { MinKG = 0, MaxPrice = math.huge },
+	["Disco Bee"] = { MinKG = 0, MaxPrice = math.huge },
+	["Bee"] = { MinKG = 0, MaxPrice = math.huge },
+	["Honey Bee"] = { MinKG = 0, MaxPrice = math.huge },
+	["Bear Bee"] = { MinKG = 0, MaxPrice = math.huge },
+	["Petal Bee"] = { MinKG = 0, MaxPrice = math.huge },
+	["Queen Bee"] = { MinKG = 0, MaxPrice = math.huge },
 }
 
 --==================================================
@@ -55,13 +60,13 @@ local Filters = {
 --==================================================
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-local Library = loadstring(game:HttpGet(repo.."Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo.."addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
 local Window = Library:CreateWindow({
 	Title = "Grow A Garden – Booth Sniper",
-	Footer = "Obsidian UI",
+	Footer = "Normalized @ Level 100",
 	Icon = "target",
 	Center = true,
 	AutoShow = true
@@ -69,13 +74,11 @@ local Window = Library:CreateWindow({
 
 local Tabs = {
 	Main = Window:AddTab("Main", "rocket"),
-	Webhook = Window:AddTab("Webhook", "link"),
 	UI = Window:AddTab("UI Settings", "settings")
 }
 
-local MainBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
+local SniperBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
 local FilterBox = Tabs.Main:AddRightGroupbox("Pet Filters", "paw-print")
-local WebhookBox = Tabs.Webhook:AddLeftGroupbox("Discord", "link")
 
 --==================================================
 -- STATE
@@ -83,13 +86,16 @@ local WebhookBox = Tabs.Webhook:AddLeftGroupbox("Discord", "link")
 
 getgenv().SniperEnabled = false
 getgenv().ScanDelay = 0.5
-getgenv().WebhookURL = ""
+
+local SelectedPets = {}
+local MinKG = 0
+local MaxPrice = math.huge
 
 --==================================================
--- SNIPER CONTROL (NO LOCK)
+-- SNIPER CONTROLS
 --==================================================
 
-MainBox:AddToggle("EnableSniper", {
+SniperBox:AddToggle("EnableSniper", {
 	Text = "Enable Booth Sniper",
 	Default = false,
 	Callback = function(v)
@@ -97,7 +103,7 @@ MainBox:AddToggle("EnableSniper", {
 	end
 })
 
-MainBox:AddSlider("ScanDelay", {
+SniperBox:AddSlider("ScanDelay", {
 	Text = "Scan Delay",
 	Default = 0.5,
 	Min = 0.1,
@@ -110,7 +116,7 @@ MainBox:AddSlider("ScanDelay", {
 })
 
 --==================================================
--- PET FILTERS (SEARCH + MULTI + TEXT INPUTS)
+-- FILTER UI
 --==================================================
 
 local PetNames = {}
@@ -119,90 +125,103 @@ for name in pairs(Filters) do
 end
 table.sort(PetNames)
 
-FilterBox:AddDropdown("SelectedPets", {
-	Text = "Pet Type",
+FilterBox:AddDropdown("PetSelector", {
+	Text = "Pet Type (Search + Multi)",
 	Values = PetNames,
 	Multi = true,
-	Searchable = true,
-	AllowNull = true,
-	Default = {}
+	Searchable = true
 })
 
-FilterBox:AddInput("MinWeight", {
-	Text = "Min Weight (KG)",
-	Default = "0",
-	Placeholder = "e.g. 62.2",
+FilterBox:AddInput("MinKGInput", {
+	Text = "Min Weight (KG @ Level 100)",
+	Placeholder = "e.g. 60",
 	Numeric = true,
-	Finished = true,
 	Callback = function(v)
-		local value = tonumber(v)
-		if not value then return end
-
-		local selected = Library.Options.SelectedPets.Value or {}
-		for pet in pairs(selected) do
-			if Filters[pet] then
-				Filters[pet][1] = value
-			end
-		end
+		MinKG = tonumber(v) or 0
 	end
 })
 
-FilterBox:AddInput("MaxPrice", {
+FilterBox:AddInput("MaxPriceInput", {
 	Text = "Max Price (Tokens)",
-	Default = "1000",
-	Placeholder = "e.g. 20000",
+	Placeholder = "e.g. 500",
 	Numeric = true,
-	Finished = true,
 	Callback = function(v)
-		local value = tonumber(v)
-		if not value then return end
-
-		local selected = Library.Options.SelectedPets.Value or {}
-		for pet in pairs(selected) do
-			if Filters[pet] then
-				Filters[pet][2] = value
-			end
-		end
+		MaxPrice = tonumber(v) or math.huge
 	end
 })
 
-Library.Options.SelectedPets:OnChanged(function()
-	local selected = Library.Options.SelectedPets.Value or {}
-	for pet in pairs(selected) do
-		if Filters[pet] then
-			Library.Options.MinWeight:SetValue(tostring(Filters[pet][1]))
-			Library.Options.MaxPrice:SetValue(tostring(Filters[pet][2]))
-			break
+Library.Options.PetSelector:OnChanged(function()
+	SelectedPets = {}
+	for pet, enabled in pairs(Library.Options.PetSelector.Value or {}) do
+		if enabled then
+			SelectedPets[pet] = true
 		end
 	end
 end)
 
 --==================================================
--- WEBHOOK
+-- SNIPER LOGIC
 --==================================================
 
-WebhookBox:AddInput("WebhookURL", {
-	Text = "Discord Webhook",
-	Placeholder = "https://discord.com/api/webhooks/...",
-	Callback = function(v)
-		getgenv().WebhookURL = v
-	end
-})
+local Controller = require(ReplicatedStorage.Modules.TradeBoothControllers.TradeBoothController)
+local DataService = require(ReplicatedStorage.Modules.DataService)
 
-WebhookBox:AddButton({
-	Text = "Test Webhook",
-	Func = function()
-		if getgenv().WebhookURL == "" then return end
-		(request or http_request)({
-			Url = getgenv().WebhookURL,
-			Method = "POST",
-			Headers = {["content-type"] = "application/json"},
-			Body = game.HttpService:JSONEncode({
-				content = "✅ Booth Sniper webhook connected"
+getgenv().boothData = getupvalues(Controller.GetPlayerBoothData)[2]:GetDataAsync()
+
+local function NormalizeWeight(weight, level)
+	return (weight / level) * 100
+end
+
+local function GetAllListings()
+	local Listings = {}
+	local Data = getgenv().boothData
+
+	for BoothId, Booth in pairs(Data.Booths) do
+		local Owner = Booth.Owner
+		if not Owner then continue end
+
+		if not Data.Players[Owner] then continue end
+
+		for ListingId, Listing in pairs(Data.Players[Owner].Listings) do
+			if Listing.ItemType ~= "Pet" then continue end
+
+			local Item = Data.Players[Owner].Items[Listing.ItemId]
+			if not Item or Item.PetData.IsFavorite then continue end
+
+			table.insert(Listings, {
+				Player = Owner,
+				ListingId = ListingId,
+				PetType = Item.PetData.PetType,
+				Weight = Item.PetData.BaseWeight * 10,
+				Level = Item.PetData.Level,
+				Price = Listing.Price
 			})
-		})
+		end
 	end
-})
+
+	return Listings
+end
+
+local function MainLoop()
+	if not getgenv().SniperEnabled then return end
+
+	local Listings = GetAllListings()
+	local Tokens = DataService:GetData().TradeData.Tokens
+
+	for _, pet in pairs(Listings) do
+		if not SelectedPets[pet.PetType] then continue end
+		if pet.Price > MaxPrice or pet.Price > Tokens then continue end
+
+		local normalized = NormalizeWeight(pet.Weight, pet.Level)
+
+		if normalized >= MinKG then
+			ReplicatedStorage.GameEvents.TradeEvents.Booths.BuyListing:InvokeServer(
+				Players:GetPlayerByUserId(tonumber(string.split(pet.Player, "_")[2])),
+				pet.ListingId
+			)
+		end
+	end
+end
 
 --==================================================
 -- THEME / SAVE
@@ -218,15 +237,14 @@ ThemeManager:LoadDefault()
 SaveManager:LoadAutoloadConfig()
 
 --==================================================
--- SNIPER LOOP
+-- LOOP
 --==================================================
 
 task.spawn(function()
 	while true do
 		task.wait(getgenv().ScanDelay)
-		if not getgenv().SniperEnabled then continue end
 		pcall(MainLoop)
 	end
 end)
 
-Library:Notify("Booth Sniper Loaded", 4)
+Library:Notify("Booth Sniper Loaded (Normalized @ Level 100)", 5)

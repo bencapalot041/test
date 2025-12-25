@@ -60,7 +60,7 @@ local ThemeManager = loadstring(game:HttpGet(repo.."addons/ThemeManager.lua"))()
 local SaveManager = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
 
 local Window = Library:CreateWindow({
-	Title = "Grow A Garden – Booth Sniper",
+	Title = "Goons Hub",
 	Footer = "Obsidian UI",
 	Icon = "target",
 	Center = true,

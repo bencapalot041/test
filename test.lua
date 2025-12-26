@@ -113,77 +113,73 @@ SniperBox:AddToggle("EnableSniper", {
 -- DATA VIEWER (SAFE + SEARCHABLE)
 --==================================================
 
-local DataService = require(ReplicatedStorage.Modules.DataService)
+--==================================================
+-- DATA VIEWER (SELECT → SHOW VALUE UNDERNEATH)
+--==================================================
 
-local function GetPlayerDataSafe()
+-- Anchor to force render
+DataBox:AddLabel("Player Data")
+
+local DataService = require(game:GetService("ReplicatedStorage").Modules.DataService)
+
+-- Safe fetch
+local function GetPlayerData()
 	local data
 	repeat
-		task.wait(0.2)
+		task.wait()
 		data = DataService:GetData()
-	until type(data) == "table" and next(data) ~= nil
+	until type(data) == "table"
 	return data
 end
 
-local PlayerData = GetPlayerDataSafe()
+local PlayerData = GetPlayerData()
 
-local AllDataKeys = {}
-for k in pairs(PlayerData) do
-	table.insert(AllDataKeys, k)
+-- Build keys
+local DataKeys = {}
+for key in pairs(PlayerData) do
+	table.insert(DataKeys, key)
 end
-table.sort(AllDataKeys)
+table.sort(DataKeys)
 
-local FilteredKeys = table.clone(AllDataKeys)
-
--- Search box (EXPLICIT input, Obsidian dropdown search is unreliable)
-DataBox:AddInput("DataSearchInput", {
-	Text = "Search Data Key",
-	Placeholder = "Type to filter...",
-	Callback = function(text)
-		text = string.lower(text or "")
-		FilteredKeys = {}
-
-		for _, key in ipairs(AllDataKeys) do
-			if text == "" or string.find(string.lower(key), text, 1, true) then
-				table.insert(FilteredKeys, key)
-			end
-		end
-
-		Library.Options.DataKeyDropdown:SetValues(FilteredKeys)
-	end
+-- Dropdown (single select)
+DataBox:AddDropdown("DataKey_Select", {
+	Text = "Select Key",
+	Values = DataKeys,
+	Searchable = true
 })
 
--- Dropdown
-DataBox:AddDropdown("DataKeyDropdown", {
-	Text = "Select Data Key",
-	Values = FilteredKeys,
-	AllowNull = true
-})
+-- VALUE DISPLAY (this is what shows underneath)
+local ValueLabel = DataBox:AddLabel("")
 
-Library.Options.DataKeyDropdown:OnChanged(function()
-	local key = Library.Options.DataKeyDropdown.Value
-	if key then
-		print("[DATA]", key, PlayerData[key])
+-- Formatter (clean output)
+local function FormatValue(value)
+	local t = typeof(value)
+
+	if t == "table" then
+		return "Table (" .. tostring(#value) .. " entries)"
+	elseif t == "boolean" then
+		return value and "true" or "false"
+	elseif t == "number" then
+		return tostring(value)
+	elseif t == "string" then
+		return value
+	else
+		return "[" .. t .. "]"
 	end
+end
+
+-- Update on selection
+Library.Options.DataKey_Select:OnChanged(function()
+	local key = Library.Options.DataKey_Select.Value
+	if not key then
+		ValueLabel:SetText("")
+		return
+	end
+
+	local value = PlayerData[key]
+	ValueLabel:SetText(FormatValue(value))
 end)
 
--- Refresh button (important for live sessions)
-DataBox:AddButton({
-	Text = "Refresh Data",
-	Func = function()
-		PlayerData = GetPlayerDataSafe()
-
-		AllDataKeys = {}
-		for k in pairs(PlayerData) do
-			table.insert(AllDataKeys, k)
-		end
-		table.sort(AllDataKeys)
-
-		FilteredKeys = table.clone(AllDataKeys)
-		Library.Options.DataKeyDropdown:SetValues(FilteredKeys)
-
-		Library:Notify("Data refreshed (" .. #FilteredKeys .. " keys)", 2)
-	end
-})
 
 SniperBox:AddSlider("ScanDelay", {
 	Text = "Scan Delay",

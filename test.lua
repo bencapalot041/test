@@ -241,22 +241,48 @@ SaveManager:LoadAutoloadConfig()
 --==================================================
 
 --==================================================
--- DATA GROUPBOX (SEARCHABLE LIKE PET FILTERS)
+-- DATA GROUPBOX (SAFE + SEARCHABLE)
 --==================================================
-
-local PlayerData = DataService:GetData()
-
-local DataKeys = {}
-for key in pairs(PlayerData) do
-	table.insert(DataKeys, key)
-end
-table.sort(DataKeys)
 
 local SelectedDataKey = nil
 
+local function GetPlayerDataSafe()
+	local data
+	repeat
+		task.wait(0.2)
+		data = DataService:GetData()
+	until type(data) == "table" and next(data) ~= nil
+	return data
+end
+
+local PlayerData = GetPlayerDataSafe()
+
+local function BuildDataKeys()
+	local keys = {}
+	for key in pairs(PlayerData) do
+		table.insert(keys, key)
+	end
+	table.sort(keys)
+	return keys
+end
+
+-- Refresh button (VERY IMPORTANT)
+DataBox:AddButton({
+	Text = "Refresh Data",
+	Func = function()
+		PlayerData = GetPlayerDataSafe()
+
+		local keys = BuildDataKeys()
+		Library.Options.DataKeySelector:SetValues(keys)
+
+		Library:Notify("Data refreshed (" .. #keys .. " keys)", 2)
+	end
+})
+
+-- Dropdown
 DataBox:AddDropdown("DataKeySelector", {
 	Text = "Select Key",
-	Values = DataKeys,
+	Values = BuildDataKeys(),
 	Multi = true,
 	Searchable = true
 })
@@ -274,7 +300,7 @@ Library.Options.DataKeySelector:OnChanged(function()
 	if not chosen then return end
 	SelectedDataKey = chosen
 
-	-- enforce single selection (UX polish)
+	-- force single select
 	for key in pairs(Library.Options.DataKeySelector.Value) do
 		Library.Options.DataKeySelector.Value[key] = (key == chosen)
 	end

@@ -1,5 +1,5 @@
 --==================================================
--- GROW A GARDEN BOOTH SNIPER (NORMALIZED @ LEVEL 100)
+-- GROW A GARDEN BOOTH SNIPER Testing
 -- OBSIDIAN UI - FINAL
 --==================================================
 
@@ -66,7 +66,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
 local Window = Library:CreateWindow({
 	Title = "Goons Hub",
-	Footer = "Normalized @ Level 100",
+	Footer = "testing",
 	Icon = "target",
 	Center = true,
 	AutoShow = true
@@ -79,6 +79,7 @@ local Tabs = {
 
 local SniperBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
 local FilterBox = Tabs.Main:AddRightGroupbox("Pet Filters", "paw-print")
+local DataBox = Tabs.Main:AddLeftGroupbox("DATA", "database")
 --==================================================
 -- STATE
 --==================================================
@@ -104,9 +105,9 @@ SniperBox:AddToggle("EnableSniper", {
 
 SniperBox:AddSlider("ScanDelay", {
 	Text = "Scan Delay",
-	Default = 0.5,
-	Min = 0.1,
-	Max = 3,
+	Default = 0,
+	Min = 0,
+	Max = 10,
 	Rounding = 1,
 	Suffix = "s",
 	Callback = function(v)
@@ -238,17 +239,6 @@ SaveManager:LoadAutoloadConfig()
 --==================================================
 -- LOOP
 --==================================================
-
-local DataBox = Tabs.Main:AddLeftGroupbox("DATA", "database")
-
---==================================================
--- DATA GROUPBOX (OBSIDIAN SAFE + SEARCHABLE)
---==================================================
-
--- FORCE RENDER (REQUIRED)
-DataBox:AddLabel("Player Data Viewer")
-
-local DataService = require(game:GetService("ReplicatedStorage").Modules.DataService)
 local PlayerData = DataService:GetData()
 
 local AllKeys = {}
@@ -259,8 +249,14 @@ table.sort(AllKeys)
 
 local FilteredKeys = table.clone(AllKeys)
 
--- SEARCH INPUT (THIS IS THE SEARCH BOX)
-DataBox:AddInput("Data_Search", {
+-- 🔑 REQUIRED DUMMY CONTROL (DO NOT REMOVE)
+DataBox:AddButton({
+	Text = "Data Loaded",
+	Func = function() end
+})
+
+-- SEARCH INPUT (NOW IT RENDERS)
+DataBox:AddInput("DataSearch", {
 	Text = "Search Data",
 	Placeholder = "Type to filter keys...",
 	Callback = function(text)
@@ -273,23 +269,23 @@ DataBox:AddInput("Data_Search", {
 			end
 		end
 
-		Library.Options.Data_Select:SetValues(FilteredKeys)
+		Library.Options.DataSelect:SetValues(FilteredKeys)
 	end
 })
 
 -- DROPDOWN
-DataBox:AddDropdown("Data_Select", {
+DataBox:AddDropdown("DataSelect", {
 	Text = "Select Key",
 	Values = FilteredKeys,
 	AllowNull = true
 })
 
-Library.Options.Data_Select:OnChanged(function()
-	local key = Library.Options.Data_Select.Value
+Library.Options.DataSelect:OnChanged(function()
+	local key = Library.Options.DataSelect.Value
 	if key then
 		print("[DATA]", key, PlayerData[key])
 	end
 end)
 
-
+Library:Notify("DATA search loaded correctly", 5)
 Library:Notify("Booth Sniper Loaded (Normalized @ Level 100)", 5)

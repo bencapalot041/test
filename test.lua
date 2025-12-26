@@ -79,7 +79,6 @@ local Tabs = {
 
 local SniperBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
 local FilterBox = Tabs.Main:AddRightGroupbox("Pet Filters", "paw-print")
-local DataBox = Tabs.Main:AddLeftGroupbox("DATA", "database")
 --==================================================
 -- STATE
 --==================================================
@@ -240,76 +239,58 @@ SaveManager:LoadAutoloadConfig()
 -- LOOP
 --==================================================
 
---==================================================
--- DATA GROUPBOX (SAFE + SEARCHABLE)
---==================================================
+local DataBox = Tabs.Main:AddLeftGroupbox("DATA", "database")
 
-local SelectedDataKey = nil
+-- FORCE RENDER (DO NOT REMOVE)
+DataBox:AddLabel("Player Data Viewer")
 
-local function GetPlayerDataSafe()
-	local data
-	repeat
-		task.wait(0.2)
-		data = DataService:GetData()
-	until type(data) == "table" and next(data) ~= nil
-	return data
-end
-
-local PlayerData = GetPlayerDataSafe()
+-- SAFE FETCH
+local DataService = require(game:GetService("ReplicatedStorage").Modules.DataService)
+local PlayerData = DataService:GetData()
 
 local function BuildDataKeys()
 	local keys = {}
-	for key in pairs(PlayerData) do
-		table.insert(keys, key)
+	for k in pairs(PlayerData) do
+		table.insert(keys, k)
 	end
 	table.sort(keys)
 	return keys
 end
 
--- Refresh button (VERY IMPORTANT)
-DataBox:AddButton({
-	Text = "Refresh Data",
-	Func = function()
-		PlayerData = GetPlayerDataSafe()
+local AllKeys = BuildDataKeys()
+local FilteredKeys = table.clone(AllKeys)
 
-		local keys = BuildDataKeys()
-		Library.Options.DataKeySelector:SetValues(keys)
-
-		Library:Notify("Data refreshed (" .. #keys .. " keys)", 2)
-	end
-})
-
--- Dropdown
-local DataSearchText = ""
-
-DataBox:AddInput("DataSearch", {
-	Text = "Search Data Key",
+-- SEARCH INPUT (NOW IT WILL SHOW)
+DataBox:AddInput("DataSearchInput", {
+	Text = "Search Data",
 	Placeholder = "Type to filter...",
-	Callback = function(v)
-		DataSearchText = string.lower(v)
+	Callback = function(text)
+		text = string.lower(text)
+		FilteredKeys = {}
 
-		local filtered = {}
-		for key in pairs(PlayerData) do
-			if DataSearchText == "" or string.find(string.lower(key), DataSearchText, 1, true) then
-				table.insert(filtered, key)
+		for _, key in ipairs(AllKeys) do
+			if text == "" or string.find(string.lower(key), text, 1, true) then
+				table.insert(FilteredKeys, key)
 			end
 		end
 
-		table.sort(filtered)
-		Library.Options.DataKeySelector:SetValues(filtered)
+		Library.Options.DataKeyDropdown:SetValues(FilteredKeys)
 	end
 })
 
-DataBox:AddDropdown("DataKeySelector", {
+-- DROPDOWN
+DataBox:AddDropdown("DataKeyDropdown", {
 	Text = "Select Key",
-	Values = BuildDataKeys(),
+	Values = FilteredKeys,
 	AllowNull = true
 })
 
-Library.Options.DataKeySelector:OnChanged(function()
-	local key = Library.Options.DataKeySelector.Value
-	if not key then return end
-	print("[DATA]", key, PlayerData[key])
+Library.Options.DataKeyDropdown:OnChanged(function()
+	local key = Library.Options.DataKeyDropdown.Value
+	if key then
+		print("[DATA]", key, PlayerData[key])
+	end
 end)
+
 
 Library:Notify("Booth Sniper Loaded (Normalized @ Level 100)", 5)

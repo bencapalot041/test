@@ -244,7 +244,6 @@ SaveManager:LoadAutoloadConfig()
 -- DATA GROUPBOX (SEARCHABLE LIKE PET FILTERS)
 --==================================================
 
-local DataService = require(game:GetService("ReplicatedStorage").Modules.DataService)
 local PlayerData = DataService:GetData()
 
 local DataKeys = {}
@@ -253,20 +252,34 @@ for key in pairs(PlayerData) do
 end
 table.sort(DataKeys)
 
+local SelectedDataKey = nil
+
 DataBox:AddDropdown("DataKeySelector", {
 	Text = "Select Key",
 	Values = DataKeys,
-	Multi = true,         -- REQUIRED
-	Searchable = true     -- REQUIRED
+	Multi = true,
+	Searchable = true
 })
 
 Library.Options.DataKeySelector:OnChanged(function()
+	local chosen
+
 	for key, enabled in pairs(Library.Options.DataKeySelector.Value or {}) do
 		if enabled then
-			print("[DATA]", key, PlayerData[key])
-			break -- only use first selected key
+			chosen = key
+			break
 		end
 	end
+
+	if not chosen then return end
+	SelectedDataKey = chosen
+
+	-- enforce single selection (UX polish)
+	for key in pairs(Library.Options.DataKeySelector.Value) do
+		Library.Options.DataKeySelector.Value[key] = (key == chosen)
+	end
+
+	print("[DATA]", chosen, PlayerData[chosen])
 end)
 
 Library:Notify("Booth Sniper Loaded (Normalized @ Level 100)", 5)

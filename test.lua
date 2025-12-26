@@ -241,29 +241,28 @@ SaveManager:LoadAutoloadConfig()
 
 local DataBox = Tabs.Main:AddLeftGroupbox("DATA", "database")
 
--- FORCE RENDER (DO NOT REMOVE)
+--==================================================
+-- DATA GROUPBOX (OBSIDIAN SAFE + SEARCHABLE)
+--==================================================
+
+-- FORCE RENDER (REQUIRED)
 DataBox:AddLabel("Player Data Viewer")
 
--- SAFE FETCH
 local DataService = require(game:GetService("ReplicatedStorage").Modules.DataService)
 local PlayerData = DataService:GetData()
 
-local function BuildDataKeys()
-	local keys = {}
-	for k in pairs(PlayerData) do
-		table.insert(keys, k)
-	end
-	table.sort(keys)
-	return keys
+local AllKeys = {}
+for k in pairs(PlayerData) do
+	table.insert(AllKeys, k)
 end
+table.sort(AllKeys)
 
-local AllKeys = BuildDataKeys()
 local FilteredKeys = table.clone(AllKeys)
 
--- SEARCH INPUT (NOW IT WILL SHOW)
-DataBox:AddInput("DataSearchInput", {
+-- SEARCH INPUT (THIS IS THE SEARCH BOX)
+DataBox:AddInput("Data_Search", {
 	Text = "Search Data",
-	Placeholder = "Type to filter...",
+	Placeholder = "Type to filter keys...",
 	Callback = function(text)
 		text = string.lower(text)
 		FilteredKeys = {}
@@ -274,19 +273,19 @@ DataBox:AddInput("DataSearchInput", {
 			end
 		end
 
-		Library.Options.DataKeyDropdown:SetValues(FilteredKeys)
+		Library.Options.Data_Select:SetValues(FilteredKeys)
 	end
 })
 
 -- DROPDOWN
-DataBox:AddDropdown("DataKeyDropdown", {
+DataBox:AddDropdown("Data_Select", {
 	Text = "Select Key",
 	Values = FilteredKeys,
 	AllowNull = true
 })
 
-Library.Options.DataKeyDropdown:OnChanged(function()
-	local key = Library.Options.DataKeyDropdown.Value
+Library.Options.Data_Select:OnChanged(function()
+	local key = Library.Options.Data_Select.Value
 	if key then
 		print("[DATA]", key, PlayerData[key])
 	end

@@ -280,32 +280,36 @@ DataBox:AddButton({
 })
 
 -- Dropdown
+local DataSearchText = ""
+
+DataBox:AddInput("DataSearch", {
+	Text = "Search Data Key",
+	Placeholder = "Type to filter...",
+	Callback = function(v)
+		DataSearchText = string.lower(v)
+
+		local filtered = {}
+		for key in pairs(PlayerData) do
+			if DataSearchText == "" or string.find(string.lower(key), DataSearchText, 1, true) then
+				table.insert(filtered, key)
+			end
+		end
+
+		table.sort(filtered)
+		Library.Options.DataKeySelector:SetValues(filtered)
+	end
+})
+
 DataBox:AddDropdown("DataKeySelector", {
 	Text = "Select Key",
 	Values = BuildDataKeys(),
-	Multi = true,
-	Searchable = true
+	AllowNull = true
 })
 
 Library.Options.DataKeySelector:OnChanged(function()
-	local chosen
-
-	for key, enabled in pairs(Library.Options.DataKeySelector.Value or {}) do
-		if enabled then
-			chosen = key
-			break
-		end
-	end
-
-	if not chosen then return end
-	SelectedDataKey = chosen
-
-	-- force single select
-	for key in pairs(Library.Options.DataKeySelector.Value) do
-		Library.Options.DataKeySelector.Value[key] = (key == chosen)
-	end
-
-	print("[DATA]", chosen, PlayerData[chosen])
+	local key = Library.Options.DataKeySelector.Value
+	if not key then return end
+	print("[DATA]", key, PlayerData[key])
 end)
 
 Library:Notify("Booth Sniper Loaded (Normalized @ Level 100)", 5)

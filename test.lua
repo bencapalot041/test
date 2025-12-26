@@ -240,12 +240,10 @@ SaveManager:LoadAutoloadConfig()
 -- LOOP
 --==================================================
 
-task.spawn(function()
-	while true do
-		task.wait(getgenv().ScanDelay)
-		pcall(MainLoop)
-	end
-end)
+--==================================================
+-- DATA GROUPBOX (SEARCHABLE LIKE PET FILTERS)
+--==================================================
+
 local DataService = require(game:GetService("ReplicatedStorage").Modules.DataService)
 local PlayerData = DataService:GetData()
 
@@ -258,16 +256,17 @@ table.sort(DataKeys)
 DataBox:AddDropdown("DataKeySelector", {
 	Text = "Select Key",
 	Values = DataKeys,
-	Searchable = true,
-	AllowNull = true
+	Multi = true,         -- REQUIRED
+	Searchable = true     -- REQUIRED
 })
 
 Library.Options.DataKeySelector:OnChanged(function()
-	local selectedKey = Library.Options.DataKeySelector.Value
-	if not selectedKey then return end
-
-	-- For now: just print (safe, no side effects)
-	print("[DATA]", selectedKey, PlayerData[selectedKey])
+	for key, enabled in pairs(Library.Options.DataKeySelector.Value or {}) do
+		if enabled then
+			print("[DATA]", key, PlayerData[key])
+			break -- only use first selected key
+		end
+	end
 end)
 
 Library:Notify("Booth Sniper Loaded (Normalized @ Level 100)", 5)

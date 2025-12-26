@@ -80,6 +80,13 @@ local Tabs = {
 local SniperBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
 local FilterBox = Tabs.Main:AddRightGroupbox("Pet Filters", "paw-print")
 local DataBox = Tabs.Main:AddLeftGroupbox("DATA", "database")
+
+DataBox:AddToggle("DataAnchor", {
+    Text = "Enable Data Viewer",
+    Default = true,
+    Callback = function() end
+})
+
 --==================================================
 -- STATE
 --==================================================
@@ -100,6 +107,81 @@ SniperBox:AddToggle("EnableSniper", {
 	Default = false,
 	Callback = function(v)
 		getgenv().SniperEnabled = v
+	end
+})
+--==================================================
+-- DATA VIEWER (SAFE + SEARCHABLE)
+--==================================================
+
+local DataService = require(ReplicatedStorage.Modules.DataService)
+
+local function GetPlayerDataSafe()
+	local data
+	repeat
+		task.wait(0.2)
+		data = DataService:GetData()
+	until type(data) == "table" and next(data) ~= nil
+	return data
+end
+
+local PlayerData = GetPlayerDataSafe()
+
+local AllDataKeys = {}
+for k in pairs(PlayerData) do
+	table.insert(AllDataKeys, k)
+end
+table.sort(AllDataKeys)
+
+local FilteredKeys = table.clone(AllDataKeys)
+
+-- Search box (EXPLICIT input, Obsidian dropdown search is unreliable)
+DataBox:AddInput("DataSearchInput", {
+	Text = "Search Data Key",
+	Placeholder = "Type to filter...",
+	Callback = function(text)
+		text = string.lower(text or "")
+		FilteredKeys = {}
+
+		for _, key in ipairs(AllDataKeys) do
+			if text == "" or string.find(string.lower(key), text, 1, true) then
+				table.insert(FilteredKeys, key)
+			end
+		end
+
+		Library.Options.DataKeyDropdown:SetValues(FilteredKeys)
+	end
+})
+
+-- Dropdown
+DataBox:AddDropdown("DataKeyDropdown", {
+	Text = "Select Data Key",
+	Values = FilteredKeys,
+	AllowNull = true
+})
+
+Library.Options.DataKeyDropdown:OnChanged(function()
+	local key = Library.Options.DataKeyDropdown.Value
+	if key then
+		print("[DATA]", key, PlayerData[key])
+	end
+end)
+
+-- Refresh button (important for live sessions)
+DataBox:AddButton({
+	Text = "Refresh Data",
+	Func = function()
+		PlayerData = GetPlayerDataSafe()
+
+		AllDataKeys = {}
+		for k in pairs(PlayerData) do
+			table.insert(AllDataKeys, k)
+		end
+		table.sort(AllDataKeys)
+
+		FilteredKeys = table.clone(AllDataKeys)
+		Library.Options.DataKeyDropdown:SetValues(FilteredKeys)
+
+		Library:Notify("Data refreshed (" .. #FilteredKeys .. " keys)", 2)
 	end
 })
 
@@ -239,53 +321,4 @@ SaveManager:LoadAutoloadConfig()
 --==================================================
 -- LOOP
 --==================================================
-local PlayerData = DataService:GetData()
-
-local AllKeys = {}
-for k in pairs(PlayerData) do
-	table.insert(AllKeys, k)
-end
-table.sort(AllKeys)
-
-local FilteredKeys = table.clone(AllKeys)
-
--- 🔑 REQUIRED DUMMY CONTROL (DO NOT REMOVE)
-DataBox:AddButton({
-	Text = "Data Loaded",
-	Func = function() end
-})
-
--- SEARCH INPUT (NOW IT RENDERS)
-DataBox:AddInput("DataSearch", {
-	Text = "Search Data",
-	Placeholder = "Type to filter keys...",
-	Callback = function(text)
-		text = string.lower(text)
-		FilteredKeys = {}
-
-		for _, key in ipairs(AllKeys) do
-			if text == "" or string.find(string.lower(key), text, 1, true) then
-				table.insert(FilteredKeys, key)
-			end
-		end
-
-		Library.Options.DataSelect:SetValues(FilteredKeys)
-	end
-})
-
--- DROPDOWN
-DataBox:AddDropdown("DataSelect", {
-	Text = "Select Key",
-	Values = FilteredKeys,
-	AllowNull = true
-})
-
-Library.Options.DataSelect:OnChanged(function()
-	local key = Library.Options.DataSelect.Value
-	if key then
-		print("[DATA]", key, PlayerData[key])
-	end
-end)
-
-Library:Notify("DATA search loaded correctly", 5)
 Library:Notify("Booth Sniper Loaded (Normalized @ Level 100)", 5)

@@ -151,22 +151,35 @@ DataBox:AddDropdown("DataKey_Select", {
 -- VALUE DISPLAY (this is what shows underneath)
 local ValueLabel = DataBox:AddLabel("")
 
--- Formatter (clean output)
-local function FormatValue(value)
+local function FormatValue(value, indent)
+	indent = indent or 0
+	local pad = string.rep("  ", indent)
 	local t = typeof(value)
 
-	if t == "table" then
-		return "Table (" .. tostring(#value) .. " entries)"
-	elseif t == "boolean" then
-		return value and "true" or "false"
-	elseif t == "number" then
-		return tostring(value)
-	elseif t == "string" then
-		return value
-	else
-		return "[" .. t .. "]"
+	if t ~= "table" then
+		return pad .. tostring(value)
 	end
+
+	local lines = {}
+	local count = 0
+
+	for k, v in pairs(value) do
+		count += 1
+		if typeof(v) == "table" then
+			table.insert(lines, pad .. tostring(k) .. ":")
+			table.insert(lines, FormatValue(v, indent + 1))
+		else
+			table.insert(lines, pad .. tostring(k) .. ": " .. tostring(v))
+		end
+	end
+
+	if count == 0 then
+		return pad .. "{}"
+	end
+
+	return table.concat(lines, "\n")
 end
+
 
 -- Update on selection
 Library.Options.DataKey_Select:OnChanged(function()

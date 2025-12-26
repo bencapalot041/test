@@ -79,7 +79,7 @@ local Tabs = {
 
 local SniperBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
 local FilterBox = Tabs.Main:AddRightGroupbox("Pet Filters", "paw-print")
-
+local DataBox = Tabs.Main:AddLeftGroupbox("DATA", "database")
 --==================================================
 -- STATE
 --==================================================
@@ -245,6 +245,29 @@ task.spawn(function()
 		task.wait(getgenv().ScanDelay)
 		pcall(MainLoop)
 	end
+end)
+local DataService = require(game:GetService("ReplicatedStorage").Modules.DataService)
+local PlayerData = DataService:GetData()
+
+local DataKeys = {}
+for key in pairs(PlayerData) do
+	table.insert(DataKeys, key)
+end
+table.sort(DataKeys)
+
+DataBox:AddDropdown("DataKeySelector", {
+	Text = "Select Key",
+	Values = DataKeys,
+	Searchable = true,
+	AllowNull = true
+})
+
+Library.Options.DataKeySelector:OnChanged(function()
+	local selectedKey = Library.Options.DataKeySelector.Value
+	if not selectedKey then return end
+
+	-- For now: just print (safe, no side effects)
+	print("[DATA]", selectedKey, PlayerData[selectedKey])
 end)
 
 Library:Notify("Booth Sniper Loaded (Normalized @ Level 100)", 5)

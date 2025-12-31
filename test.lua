@@ -1,710 +1,1064 @@
--- GOON SNIPER - PUBLIC RELEASE (v4.9 - VOLCANO FIX)
--- [FIX] Added Retry Logic to GCScan (Fixes "Fallback Listener" issue on Volcano)
--- [FIX] Replaced hardcoded list with Dynamic Scanner (Auto-updates with game)
--- [NEW] Added "Remove ALL Filters" button to Filter Manager
--- UI Framework: Obsidian
+--==================================================
+-- GOONS — Obsidian Base (Step 2)
+-- UI Elements Only (No Logic)
+--==================================================
+--==================================================
+-- SCRIPT STATE
+--==================================================
+getgenv().SnipeLoop = getgenv().SnipeLoop or -1
 
-local Version = "v4.9"
+local ScriptState = {
+    Enabled = false,
 
--- [0] INITIALIZATION
-if not game:IsLoaded() then game.Loaded:Wait() end
-task.wait(2) 
-local Players = game:GetService("Players")
-local HttpService = game:GetService("HttpService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TeleportService = game:GetService("TeleportService")
-local VirtualInputManager = game:GetService("VirtualInputManager") 
-local GuiService = game:GetService("GuiService") 
-local Player = Players.LocalPlayer
+    -- Pet Sniper (wiring)
+    PetSniperEnabled = false,
+    PetSniperSession = 0,
+}
 
--- [NEW] DETECT DELTA EXECUTOR
-local IsDelta = false
-if identifyexecutor and string.find(string.lower(identifyexecutor()), "delta") then
-    IsDelta = true
+--==================================================
+-- PET SNIPER STATUS HANDLER (OBSIDIAN SAFE)
+--==================================================
+
+--==================================================
+-- PET SNIPER STATUS HANDLER (OBSIDIAN SAFE)
+--==================================================
+
+local function SetSniperStatus(state)
+    if not SniperStatusLabel then
+        return
+    end
+
+    --====================================
+    -- SNIPER DISABLED
+    --====================================
+    if not ScriptState.PetSniperEnabled then
+        ScriptState.SniperRuntimeState = "OFF"
+
+        SniperStatusLabel:SetText("Sniper: OFF")
+
+        if HUDStateLabel then
+            HUDStateLabel.Text = "State: OFF"
+            HUDStateLabel.TextColor3 = Color3.fromRGB(170, 170, 170) -- neutral gray
+        end
+
+        return
+    end
+
+    --====================================
+    -- NORMALIZED STATE
+    --====================================
+    ScriptState.SniperRuntimeState = state
+
+    --====================================
+    -- MAIN UI (OBSIDIAN)
+    --====================================
+    if state == "Idle" then
+        SniperStatusLabel:SetText("Sniper: Idle")
+
+    elseif state == "Scanning" then
+        SniperStatusLabel:SetText("Sniper: Scanning")
+
+    elseif state == "Teleporting" then
+        SniperStatusLabel:SetText("Sniper: Teleporting")
+
+    else
+        state = "Idle"
+        SniperStatusLabel:SetText("Sniper: Idle")
+    end
+
+    --====================================
+    -- IN-GAME HUD (COLOR CONTROLLED HERE)
+    --====================================
+    if HUDStateLabel then
+        HUDStateLabel.Text = "State: " .. state
+
+        if state == "Idle" then
+            HUDStateLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- WHITE
+
+        elseif state == "Scanning" then
+            HUDStateLabel.TextColor3 = Color3.fromRGB(34, 166, 242) -- blue / active
+
+        elseif state == "Teleporting" then
+            HUDStateLabel.TextColor3 = Color3.fromRGB(255, 80, 80) -- BRIGHT RED
+
+        else
+            HUDStateLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        end
+    end
 end
 
-local PlayerGui = Player:WaitForChild("PlayerGui", 10)
-if not PlayerGui then PlayerGui = Player:WaitForChild("PlayerGui") end
 
-local ConfigFile = "goon_config_dev.json"
-local KeyFile = "goon_auth_key.txt" 
-local WarnFile = "goon_delta_warned.txt" 
-local TradeWorldID = 129954712878723 
+--==================================================
+-- FORWARD DECLARATIONS (OBSIDIAN SAFE)
+--==================================================
 
--- [NEW] TELEPORT ERROR HANDLER (Anti-Stuck Logic)
-TeleportService.TeleportInitFailed:Connect(function(player, result, errorMessage)
-    if player == Player then
-        warn("⚠️ [GOON SNIPER] Teleport Failed ("..tostring(result).."). Retrying...")
-        pcall(function() GuiService:ClearError() end)
-        pcall(function()
-            local Viewport = workspace.CurrentCamera.ViewportSize
-            VirtualInputManager:SendMouseButtonEvent(Viewport.X/2, Viewport.Y/2 + 50, 0, true, game, 1)
-            task.wait(0.1)
-            VirtualInputManager:SendMouseButtonEvent(Viewport.X/2, Viewport.Y/2 + 50, 0, false, game, 1)
-        end)
-        task.wait(1.5)
-        if getgenv().ForceHop then getgenv().ForceHop() end
+local TryInitBoothData
+local GetAllListings
+local DoesListingMatchFilters
+
+local function IsPetSniperSessionValid(session)
+    return ScriptState.PetSniperEnabled and getgenv().SnipeLoop == session
+end
+
+local SniperMainLoop
+
+SniperMainLoop = function(session)
+    SetSniperStatus("Scanning")
+
+    -- init booth data once
+    if not TryInitBoothData() then
+        SetSniperStatus("Idle")
+        return
     end
-end)
 
--- [1] PET DATABASE (DYNAMIC SCANNER)
-local PetList = {}
+    while IsPetSniperSessionValid(session) do
+        local validListings = {}
 
-local function RefreshPetList()
-    table.clear(PetList)
-    
-    local Success, Result = pcall(function()
-        
-        -- [[ 🔴 PASTE PATH FROM DEX HERE ]] --
-        -- Replace the line below with the path you copied from Dex
-        local ModulePath = game:GetService("ReplicatedStorage").Data.PetRegistry.PetList
-    
-        local Data = require(ModulePath)
-
-        -- Smart Scanner: Detects format automatically
-        for Key, Value in pairs(Data) do
-            if type(Key) == "string" then
-                -- Case A: Key is the name (["Void Dragon"] = {...})
-                table.insert(PetList, Key)
-            elseif type(Value) == "string" then
-                -- Case B: Value is the name ("Void Dragon", "Cat")
-                table.insert(PetList, Value)
-            elseif type(Value) == "table" and Value.Name then
-                -- Case C: Name is inside property ({Name = "Void Dragon"})
-                table.insert(PetList, Value.Name)
+        local listings = GetAllListings()
+        for _, listing in ipairs(listings) do
+            if DoesListingMatchFilters(listing) then
+                table.insert(validListings, listing)
             end
         end
-    end)
 
-    if not Success then
-        warn("⚠️ [GOON SNIPER] Scanner Failed! Check the path on line 44.")
-        warn("Error: " .. tostring(Result))
-        
-        -- Fallback: Manual list just in case scanner fails
-        PetList = {"Dragon", "Cat", "Dog", "Void Dragon"} 
-    end
+        -- nothing left in this server
+        if #validListings == 0 then
+            SetSniperStatus("Idle")
+            break
+        end
 
-    table.sort(PetList)
-    print("✅ [GOON SNIPER] Database Loaded: " .. #PetList .. " pets found.")
-end
-
--- Run scanner immediately
-RefreshPetList()
-
-
--- [2] GLOBAL VARIABLES
-getgenv().SniperEnabled = false
-getgenv().CurrentFilters = {}
-getgenv().LastFound = tick()
-getgenv().WebhookURL = "https://discord.com/api/webhooks/1453157686467367085/YwXMx09qDmAEnKYk_7KhtvAYWLPYWLc2fynfiGwPxyUoCcIBUwDUZkk9M3_PJ4DBim0w"
-getgenv().HopDelay = 60
-getgenv().AutoShowUI = true 
-getgenv().AutoHopEnabled = true 
-local SeenListings = {}
-
--- Variables for Pagination
-getgenv().WatchlistPage = 1
-local ItemsPerPage = 10 
-
--- [3] CONFIGURATION
-local function SaveConfig()
-    if writefile then
-        local data = { 
-            Enabled = getgenv().SniperEnabled, 
-            Filters = getgenv().CurrentFilters,
-            Webhook = getgenv().WebhookURL,
-            HopDelay = getgenv().HopDelay,
-            AutoShow = getgenv().AutoShowUI,
-            AutoHop = getgenv().AutoHopEnabled
-        }
-       writefile(ConfigFile, HttpService:JSONEncode(data))
-    end
-end
-
-local function LoadConfig()
-    if isfile and isfile(ConfigFile) then
-        pcall(function()
-            local result = HttpService:JSONDecode(readfile(ConfigFile))
-            getgenv().SniperEnabled = result.Enabled
-            getgenv().CurrentFilters = result.Filters or {}
-            if result.Webhook and result.Webhook ~= "" then getgenv().WebhookURL = result.Webhook end
-            if result.HopDelay then getgenv().HopDelay = tonumber(result.HopDelay) end
-            if result.AutoShow ~= nil then getgenv().AutoShowUI = result.AutoShow end
-            if result.AutoHop ~= nil then getgenv().AutoHopEnabled = result.AutoHop end 
+        -- pick cheapest listing
+        table.sort(validListings, function(a, b)
+            return (a.Price or math.huge) < (b.Price or math.huge)
         end)
+
+        local target = validListings[1]
+        if not target then
+            SetSniperStatus("Idle")
+            break
+        end
+
+        -- attempt buy
+        local success = false
+        local ok, err = pcall(function()
+            success = ReplicatedStorage
+                .GameEvents
+                .TradeEvents
+                .Booths
+                .BuyListing
+                :InvokeServer(target.Player, target.ListingId)
+        end)
+
+        if not ok or not success then
+            -- buy failed → stop scanning this server
+            SetSniperStatus("Idle")
+            break
+        end
+
+        -- allow booth data to update
+        task.wait(0.25)
     end
 end
 
--- [4] SNIPER FUNCTIONS
+--==================================================
+-- GAME IS LOADED
+--==================================================
 
--- [UPDATED GCScan] Added retry loop for Volcano/Slower Executors
-local function GCScan()
-    if not getgc then return nil end
-    print("⏳ [GOON SNIPER] Scanning memory... (This may take a moment)")
-    
-    -- Try to find the table 10 times (10 seconds max)
-    for i = 1, 10 do
-        for _, v in pairs(getgc(true)) do
-            if type(v) == "table" then
-                if rawget(v, "Booths") and rawget(v, "Players") and rawget(v, "Active") == nil then
-                    if type(v.Booths) == "table" and type(v.Players) == "table" then 
-                        return v 
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+--==================================================
+-- SETTINGS UI HELPERS
+--==================================================
+
+local function SetInstanceVisible(inst, visible)
+    if not inst then return end
+    if inst:IsA("GuiObject") then
+        inst.Visible = visible
+    end
+end
+
+local Players = game:GetService("Players")
+
+local function GetSettingsInsertionPoint()
+    local player = Players.LocalPlayer
+    if not player then return nil end
+
+    local gui = player:FindFirstChild("PlayerGui")
+    if not gui then return nil end
+
+    local settingsUI = gui:FindFirstChild("SettingsUI")
+    if not settingsUI then return nil end
+
+    local settingsFrame = settingsUI:FindFirstChild("SettingsFrame")
+    if not settingsFrame then return nil end
+
+    local main = settingsFrame:FindFirstChild("Main")
+    if not main then return nil end
+
+    local holder = main:FindFirstChild("Holder")
+    if not holder then return nil end
+
+    return holder:FindFirstChild("SETTING_INSERTION_POINT")
+end
+
+local function FindSettingByText(searchText)
+    if not searchText then return nil end
+
+    local container = GetSettingsInsertionPoint()
+    if not container then return nil end
+
+    searchText = tostring(searchText):lower()
+
+    for _, child in ipairs(container:GetChildren()) do
+        if child:IsA("Frame") then
+            -- Match by frame name
+            if child.Name:lower():find(searchText) then
+                return child
+            end
+
+            -- Match by visible text
+            for _, desc in ipairs(child:GetDescendants()) do
+                if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+                    if desc.Text and desc.Text:lower():find(searchText) then
+                        return child
                     end
                 end
             end
         end
-        task.wait(1) -- Wait 1s before trying again
     end
     return nil
 end
 
-local function LoadData()
-    local liveData = GCScan()
-    if liveData then
-        print("✅ [GOON SNIPER] Data Source: Direct Memory Scan (GC)")
-        getgenv().boothData = liveData
+ScriptState.PetHUDEnabled = false
+ScriptState.ShowBaseWeight = true
+ScriptState.ShowFruitNames = true
+ScriptState.HUDHidden = false
+ScriptState._HUDCache = {}
+
+--==================================================
+-- SNIPER HUD STATE (OBSIDIAN SAFE)
+--==================================================
+
+ScriptState.SniperHUDEnabled = false
+ScriptState.SniperTeleportSeconds = nil
+ScriptState.SniperRuntimeState = "Idle"
+
+
+--==================================================
+-- LOAD OBSIDIAN
+--==================================================
+
+local SaveManager = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/bencapalot041/goons/main/addons/SaveManager.lua"
+))()
+
+local ThemeManager = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/bencapalot041/goons/main/addons/ThemeManager.lua"
+))()
+
+local Library = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/bencapalot041/goons/main/Library.lua"
+))()
+--==================================================
+-- WINDOW
+--==================================================
+
+local Window = Library:CreateWindow({
+    Title = "Goons",
+    Footer = "discord.gg/holygoons",
+    Icon = "layers",
+
+    Center = true,
+    AutoShow = true,
+
+    ToggleKeybind = Enum.KeyCode.LeftAlt,
+})
+
+--==================================================
+-- FLOATING LEFT UI TOGGLE 
+--==================================================
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ToggleGui = Instance.new("ScreenGui")
+ToggleGui.Name = "Goons_FloatingToggle"
+ToggleGui.ResetOnSpawn = false
+ToggleGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ToggleGui.Parent = playerGui
+
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Parent = ToggleGui
+ToggleButton.Size = UDim2.fromOffset(42, 42)
+ToggleButton.Position = UDim2.new(0, 8, 0.5, -21) -- LEFT SIDE
+ToggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Text = "≡"
+ToggleButton.TextSize = 22
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.AutoButtonColor = true
+ToggleButton.Active = true
+ToggleButton.Draggable = true
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 10)
+corner.Parent = ToggleButton
+local uiOpen = true
+
+ToggleButton.MouseButton1Click:Connect(function()
+    uiOpen = not uiOpen
+
+    -- toggle Obsidian window
+    Window:Toggle()
+
+    -- safety: restore mouse
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    UserInputService.MouseIconEnabled = true
+end)
+--==================================================
+-- TABS
+--==================================================
+
+local MainTab = Window:AddTab("Main")
+local PetSniperTab = Window:AddTab("Goon Sniper")
+local TradeBoothTab = Window:AddTab("Trade Booth")
+local VisualsTab = Window:AddTab("Visuals")
+local SettingsTab = Window:AddTab("Settings")
+
+--==================================================
+-- IN-GAME SNIPER DEBUG HUD (TRANSPARENT)
+--==================================================
+
+local SniperHUDGui = Instance.new("ScreenGui")
+SniperHUDGui.Name = "Goons_SniperHUD"
+SniperHUDGui.ResetOnSpawn = false
+SniperHUDGui.IgnoreGuiInset = true
+SniperHUDGui.Enabled = false
+SniperHUDGui.Parent = playerGui
+
+local SniperHUDFrame = Instance.new("Frame")
+SniperHUDFrame.Parent = SniperHUDGui
+SniperHUDFrame.BackgroundTransparency = 1
+SniperHUDFrame.Size = UDim2.fromOffset(320, 120)
+SniperHUDFrame.Position = UDim2.fromScale(0.01, 0.25)
+
+local HUDLayout = Instance.new("UIListLayout")
+HUDLayout.Parent = SniperHUDFrame
+HUDLayout.Padding = UDim.new(0, 6)
+
+local function MakeHUDLabel(text, bold)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, bold and 30 or 26)
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextYAlignment = Enum.TextYAlignment.Center
+
+    lbl.Font = bold and Enum.Font.GothamBlack or Enum.Font.GothamBold
+    lbl.TextSize = bold and 22 or 18
+
+    
+    lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+    -- HEAVY OUTLINE FOR VISIBILITY
+    lbl.TextStrokeTransparency = 0
+    lbl.TextStrokeColor3 = Color3.fromRGB(20, 0, 0)
+
+    lbl.Text = text
+    lbl.Parent = SniperHUDFrame
+    return lbl
+end
+
+
+
+local HUDTitle = MakeHUDLabel("SNIPER", true)
+HUDTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+HUDTitle.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+local HUDStateLabel = MakeHUDLabel("Status: Idle")
+local HUDTeleportLabel = MakeHUDLabel("Teleport: ")
+local HUDSessionLabel = MakeHUDLabel("Session: Inactive")
+
+--==================================================
+-- MAIN TAB
+--==================================================
+
+local MainControls = MainTab:AddLeftGroupbox("Test")
+local StatusLabel = MainControls:AddLabel("Status: Idle")
+local SniperStatusLabel = MainControls:AddLabel("Sniper: OFF")
+
+
+
+MainControls:AddToggle("MasterEnable", {
+    Text = "Enable Hatching",
+    Default = false,
+}):OnChanged(function(value)
+    ScriptState.Enabled = value
+
+    if StatusLabel then
+        if value then
+            StatusLabel:SetText("Status: Active")
+        else
+            StatusLabel:SetText("Status: Idle")
+        end
+    end
+
+    print("[Goons] Script enabled:", value)
+end)
+
+--==================================================
+-- TRADE WORLD TELEPORT (PROXIMITY PROMPT)
+--==================================================
+
+local function TeleportToTradeWorld()
+    local interaction = workspace:FindFirstChild("Interaction")
+    if not interaction then
+        warn("[Teleport] Interaction not found")
+        return
+    end
+
+    local platform = interaction:FindFirstChild("PermPortalPlatform")
+    if not platform then
+        warn("[Teleport] PermPortalPlatform not found")
+        return
+    end
+
+    local attachment = platform:FindFirstChild("PortalAttachment")
+    if not attachment then
+        warn("[Teleport] PortalAttachment not found")
+        return
+    end
+
+    local prompt = attachment:FindFirstChild("TradeWorldPrompt")
+    if not prompt or not prompt:IsA("ProximityPrompt") then
+        warn("[Teleport] TradeWorldPrompt not found")
+        return
+    end
+
+    if fireproximityprompt then
+        fireproximityprompt(prompt)
+        print("[Teleport] Trade World prompt fired")
     else
-        print("⚠️ [GOON SNIPER] Data Source: Fallback Listener (DataStream2)")
-        getgenv().boothData = {Booths = {}, Players = {}}
-        local l_DataStream2_0 = ReplicatedStorage:WaitForChild("GameEvents"):WaitForChild("DataStream2")
-    
-        if getgenv().UpdateEvent then getgenv().UpdateEvent:Disconnect() end
-        getgenv().UpdateEvent = l_DataStream2_0.OnClientEvent:Connect(function(f, Name, Data)
-            if f=="UpdateData" and Name == "Booths" then end
-        end)
+        warn("[Teleport] fireproximityprompt not supported by executor")
     end
 end
+--==================================================
+-- PET SNIPER SESSION GENERATOR (OBSIDIAN SAFE)
+--==================================================
 
-local function Sniped(PetName, Weight, Price)
-    local function FormatPrice(n)
-        return tostring(n):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
-    end
-    local Embed_Data = {
-        description="\n🕙 **Sniped At**: <t:"..math.floor(tick())..":R>\n-# account: ||"..Player.Name.."||",
-        color=65280, 
-        author={name=`GOON SNIPER: Got {PetName}({math.floor(Weight*100)/100}kg) for {FormatPrice(Price)}`}
-    }
-  
-    local newData = HttpService:JSONEncode({embeds={Embed_Data}})
-    local request = http_request or request or HttpPost or syn.request
-    
-    local url = getgenv().WebhookURL
-    if url and url ~= "" and url:find("http") then
-        request({Url = url, Body = newData, Method = "POST", Headers = {["content-type"] = "application/json"}})
-    end
+local function NewPetSniperSession()
+    local session = os.clock()
+    getgenv().SnipeLoop = session
+    ScriptState.PetSniperSession = session
+    return session
 end
+--==================================================
+-- TELEPORT COUNTDOWN (OBSIDIAN SAFE)
+--==================================================
 
-local function Hop()
-    SaveConfig() 
-    local success, err = pcall(function()
-        local Api = "https://games.roblox.com/v1/games/"..TradeWorldID.."/servers/Public?sortOrder=Desc&limit=100"
-        local Raw = game:HttpGet(Api)
-        local Servers = HttpService:JSONDecode(Raw).data
-        for i = #Servers, 2, -1 do local j = math.random(i);
-            Servers[i], Servers[j] = Servers[j], Servers[i] end
-        
-        for _, v in pairs(Servers) do
-            if v.playing and (v.maxPlayers - v.playing) >= 2 and v.id ~= game.JobId then
-                print("🚀 [GOON SNIPER] Hopping to server with " .. (v.maxPlayers - v.playing) .. " slots...")
-                TeleportService:TeleportToPlaceInstance(TradeWorldID, v.id, Player)
-                task.wait(5)
+local function StartTeleportCountdown(session, seconds)
+    task.spawn(function()
+        for i = seconds, 1, -1 do
+            if not IsPetSniperSessionValid(session) then
                 return
             end
-        end
-    end)
-    if not success then TeleportService:Teleport(TradeWorldID, Player) end
-end
-getgenv().ForceHop = Hop 
 
--- [5] MAIN LOOP
-local function MainLoop()
-    local DataService 
-    pcall(function() DataService = require(ReplicatedStorage.Modules.DataService) end)
-    local MyTokens = 0
-    if DataService then 
-        pcall(function() MyTokens = DataService:GetData().TradeData.Tokens end) end
+            ScriptState.SniperTeleportSeconds = i
+            SetSniperStatus("Teleporting")
 
-    local Data = getgenv().boothData
-    if not Data or not Data.Booths then return end 
-
-    for BoothId, BoothData in pairs(Data.Booths) do
-        if not getgenv().SniperEnabled then break end
-
-        local Owner = BoothData.Owner
-        if Owner and Data.Players[Owner] and Data.Players[Owner].Listings then
-            local realPlayer = nil
-            for _, Plr in pairs(Players:GetChildren()) do
-                if Plr.UserId == tonumber(string.split(Owner, "_")[2]) then realPlayer = Plr break end
+            if SniperStatusLabel then
+                SniperStatusLabel:SetText(
+                    string.format("Sniper: Teleporting in %ds", i)
+                )
             end
-            
-            for ListingId, ListingData in pairs(Data.Players[Owner].Listings) do
-                if not getgenv().SniperEnabled then break end
-        
-                if ListingData.ItemType == "Pet" then
-                    local ItemData = Data.Players[Owner].Items[ListingData.ItemId]
-                    if ItemData then
-                        local Type = ItemData.PetType
-                        local PetData = ItemData.PetData
-                        local Price = ListingData.Price
-                        local Weight = PetData.BaseWeight * 1.1
-                        local MaxWeight = Weight * 10
-                        local Settings = getgenv().CurrentFilters[Type]
-                        
-                        if Settings then
-                            local MinW = Settings[1] or 0
-                            local MaxP = Settings[2] or 9999999
-                        
-                            if not SeenListings[ListingId] then
-                                print("🔎 FOUND:", Type, "| Price:", Price, "| Weight:", math.floor(MaxWeight).."kg")
-                                SeenListings[ListingId] = true
-                            end
-                            
-                            if MaxWeight >= MinW and Price <= MaxP and realPlayer ~= Player then
-                                if Price <= MyTokens then
-                                    if getgenv().SniperEnabled then
-                                        local X,Y = ReplicatedStorage.GameEvents.TradeEvents.Booths.BuyListing:InvokeServer(realPlayer, ListingId)
-                                        if X then
-                                            Sniped(Type, MaxWeight, Price)
-                                            task.wait(5)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
+
+            if HUDTeleportLabel then
+                HUDTeleportLabel.Text = "Teleport in: " .. i .. "s"
+                HUDTeleportLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                HUDTeleportLabel.TextStrokeColor3 = Color3.fromRGB(60, 0, 0)
+
             end
-        end
-    end
-end
 
--- [6] OBSIDIAN UI BUILDER
-local function LoadObsidianUI()
-    local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-    local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-    local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-    local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
-
-    local Window = Library:CreateWindow({
-        Title = "GOON SNIPER " .. Version,
-        Footer = "Obsidian UI Edition",
-        Icon = "target",
-        Center = true,
-        AutoShow = getgenv().AutoShowUI 
-    })
-
-    local Tabs = {
-        Main = Window:AddTab("Main", "rocket"),
-        Settings = Window:AddTab("Settings", "settings"),
-    }
-
-    -- [LEFT] SNIPER CONTROL
-    local SniperBox = Tabs.Main:AddLeftGroupbox("Sniper Control", "crosshair")
-
-    SniperBox:AddToggle("EnableSniper", {
-        Text = "Enable Booth Sniper",
-        Default = getgenv().SniperEnabled,
-        Callback = function(v)
-           getgenv().SniperEnabled = v
-            SaveConfig()
-        end
-    })
-
-    SniperBox:AddToggle("AutoHop", {
-        Text = "Auto Server Hop",
-        Default = getgenv().AutoHopEnabled,
-        Tooltip = "If enabled, will automatically hop servers after the hop delay.",
-        Callback = function(v)
-            getgenv().AutoHopEnabled = v
-            SaveConfig()
-        end
-    })
-
-    SniperBox:AddButton("Force Hop", function()
-        Hop()
-    end)
-
-    local StatusLabel = SniperBox:AddLabel("Status: IDLE")
-
-    -- [LEFT] ACTIVE WATCHLIST
-    local WatchlistBox = Tabs.Main:AddLeftGroupbox("Active Watchlist", "list")
-    
-    local PageLabel = WatchlistBox:AddLabel("Page 1/1")
-    WatchlistBox:AddDivider()
-    
-    local WatchlistSlots = {}
-    for i = 1, ItemsPerPage do
-        WatchlistSlots[i] = WatchlistBox:AddLabel(" ") 
-    end
-    
-    WatchlistBox:AddButton("Previous Page", function()
-        if getgenv().WatchlistPage > 1 then
-             getgenv().WatchlistPage = getgenv().WatchlistPage - 1
-            getgenv().UpdateWatchlistFunc()
-        end
-    end)
-    
-    WatchlistBox:AddButton("Next Page", function()
-        getgenv().WatchlistPage = getgenv().WatchlistPage + 1
-        getgenv().UpdateWatchlistFunc()
-    end)
-
-    local DevBox = Tabs.Settings:AddRightGroupbox("Developer Tools", "wrench")
-    DevBox:AddButton("Open Dex Explorer", function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/babyhamsta/RBLX_Scripts/main/Universal/BypassedDarkDexV3.lua", true))()
-    end)
-
-    getgenv().UpdateWatchlistFunc = function()
-        local allFilters = {}
-        for pet, settings in pairs(getgenv().CurrentFilters) do
-            table.insert(allFilters, {Name = pet, Min = settings[1], Max = settings[2]})
-        end
-        
-        table.sort(allFilters, function(a,b) return a.Name < b.Name end)
-        
-        local totalItems = #allFilters
-        local maxPages = math.ceil(totalItems / ItemsPerPage)
-        if maxPages == 0 then maxPages = 1 end
-        
-        if getgenv().WatchlistPage > maxPages then getgenv().WatchlistPage = maxPages end
-        if getgenv().WatchlistPage < 1 then getgenv().WatchlistPage = 1 end
-        
-        PageLabel:SetText("Page " .. getgenv().WatchlistPage .. "/" .. maxPages)
-        local startIndex = (getgenv().WatchlistPage - 1) * ItemsPerPage + 1
-        
-        for i = 1, ItemsPerPage do
-            local itemIndex = startIndex + (i - 1)
-            local item = allFilters[itemIndex]
-            if item then
-                 local minW = item.Min or 0
-                 local maxP = item.Max or "ANY"
-                 WatchlistSlots[i]:SetText("• " .. item.Name .. " (" .. minW .. "kg | $" .. maxP .. ")")
-            else
-                 WatchlistSlots[i]:SetText(" ") 
-            end
-        end
-    end
-
-    -- [RIGHT] PET FILTER MANAGER
-    local FilterBox = Tabs.Main:AddRightGroupbox("Filter Manager", "filter")
-
-    local ValPet = PetList[1]
-    local ValWeight = 0
-    local ValPrice = 999999999
-
-    FilterBox:AddDropdown("PetSelector", {
-        Text = "Select Pet",
-        Values = PetList,
-        Default = 1,
-        Multi = false,
-        Searchable = true,
-        Callback = function(v)
-            ValPet = v
-        end
-    })
-
-    FilterBox:AddInput("MinKG", {
-        Text = "Min Weight (kg)",
-        Default = "",
-        Placeholder = "e.g. 60",
-        Numeric = true,
-        Finished = false,
-        Callback = function(v)
-            ValWeight = tonumber(v) or 0
-        end
-    })
-
-    FilterBox:AddInput("MaxPrice", {
-        Text = "Max Price",
-        Default = "",
-        Placeholder = "e.g. 5000",
-        Numeric = true,
-        Finished = false, 
-        Callback = function(v)
-            ValPrice = tonumber(v) or 999999999
-        end
-    })
-    
-    local ActiveBox = Tabs.Main:AddRightGroupbox("Manage Filters", "list")
-    local function GetActiveFilterNames()
-        local list = {}
-        for k, v in pairs(getgenv().CurrentFilters) do table.insert(list, k) end
-        table.sort(list)
-        return list
-    end
-    
-    local RemoveDropdown = ActiveBox:AddDropdown("RemoveSelector", {
-        Text = "Select to Remove",
-        Values = GetActiveFilterNames(),
-        Multi = false,
-        Searchable = true,
-    })
-
-    FilterBox:AddButton("Add / Update Filter", function()
-        if ValPet then
-            getgenv().CurrentFilters[ValPet] = {ValWeight, ValPrice}
-            Library:Notify("✅ Added: " .. ValPet .. " | " .. ValWeight .. "kg | $" .. ValPrice, 4)
-            SaveConfig()
-            RemoveDropdown:SetValues(GetActiveFilterNames())
-            RemoveDropdown:SetValue(nil)
-            getgenv().UpdateWatchlistFunc() 
-        else
-            Library:Notify("⚠️ Error: No pet selected", 3)
-        end
-    end)
-
-    ActiveBox:AddButton("Remove Selected", function()
-        local val = RemoveDropdown.Value
-        if val and getgenv().CurrentFilters[val] then
-            getgenv().CurrentFilters[val] = nil
-            Library:Notify("Removed " .. val, 3)
-            RemoveDropdown:SetValues(GetActiveFilterNames())
-            RemoveDropdown:SetValue(nil)
-            SaveConfig()
-            getgenv().UpdateWatchlistFunc() 
-        end
-    end)
-    
-    -- [NEW] BUTTON TO REMOVE ALL
-    ActiveBox:AddButton("Remove ALL Filters", function()
-        getgenv().CurrentFilters = {}
-        SaveConfig()
-        Library:Notify("🗑️ All filters have been cleared!", 3)
-        RemoveDropdown:SetValues(GetActiveFilterNames())
-        RemoveDropdown:SetValue(nil)
-        getgenv().UpdateWatchlistFunc()
-    end)
-    
-    ActiveBox:AddButton("Refresh List", function()
-         RemoveDropdown:SetValues(GetActiveFilterNames())
-         getgenv().UpdateWatchlistFunc()
-    end)
-
-    -- [SETTINGS TAB]
-    local SettingsBox = Tabs.Settings:AddLeftGroupbox("Configuration", "database")
-
-    SettingsBox:AddToggle("AutoShowSetting", {
-        Text = "Auto-Show UI on Launch",
-        Default = getgenv().AutoShowUI,
-        Tooltip = "If disabled, UI stays hidden when server hopping (Press RightCtrl to open)",
-        Callback = function(v)
-            getgenv().AutoShowUI = v
-            SaveConfig()
-        end
-    })
-    
-    SettingsBox:AddInput("Webhook", {
-        Text = "Discord Webhook",
-        Default = getgenv().WebhookURL or "",
-        Placeholder = "https://discord.com/...",
-        Finished = false, 
-        Callback = function(v)
-            getgenv().WebhookURL = v
-        end
-    })
-
-    SettingsBox:AddInput("HopDelay", {
-        Text = "Hop Delay (Seconds)",
-        Default = tostring(getgenv().HopDelay),
-        Numeric = true,
-        Finished = false, 
-        Callback = function(v)
-            getgenv().HopDelay = tonumber(v) or 60
-        end
-    })
-
-    SettingsBox:AddButton("Save Config Manually", function()
-        SaveConfig()
-        Library:Notify("Configuration Saved!", 3)
-    end)
-
-    if IsDelta then
-        local HasSeenWarning = isfile and isfile(WarnFile)
-        if not HasSeenWarning then
-            if writefile then writefile(WarnFile, "seen") end
-            Library:Notify("⚠️ DELTA DETECTED: Disable 'Anti-Scam' & 'Verify Teleports' in Delta settings!", 10)
-        end
-    end
-
-    getgenv().UpdateWatchlistFunc()
-
-    -- STATUS UPDATE LOOP
-    task.spawn(function()
-        while true do
             task.wait(1)
-            if getgenv().SniperEnabled then
-                if game.PlaceId ~= TradeWorldID then
-                    StatusLabel:SetText("Status: TELEPORTING...")
-                    for i = 10, 1, -1 do
-                        if not getgenv().SniperEnabled then break end
-                        StatusLabel:SetText("Status: Teleporting in " .. i .. "s")
-                        task.wait(1)
-                    end
-      
-                    if getgenv().SniperEnabled then
-                        TeleportService:Teleport(TradeWorldID, Player)
-                        task.wait(10)
-                    else
-                        StatusLabel:SetText("Status: IDLE")
-                    end
-            
-                else
-                    pcall(MainLoop)
-                    local delay = getgenv().HopDelay or 60
-                    if tick() - getgenv().LastFound > delay then
-                         if getgenv().AutoHopEnabled then
-                             StatusLabel:SetText("Status: HOPPING (Server Dry)")
-                             Hop()
-                             getgenv().LastFound = tick() + delay
-                        else
-                             StatusLabel:SetText("Status: SCANNING (Auto-Hop Disabled)")
-                        end
-                    else
-                        StatusLabel:SetText("Status: SCANNING... (" .. math.floor(delay - (tick() - getgenv().LastFound)) .. "s)")
-                    end
-                end
-            else
-                StatusLabel:SetText("Status: IDLE")
-             end
+        end
+
+        if IsPetSniperSessionValid(session) then
+            ScriptState.SniperTeleportSeconds = nil
+
+            if HUDTeleportLabel then
+                HUDTeleportLabel.Text = "TELEPORTING NOW"
+                HUDTeleportLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                HUDTeleportLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+
+            end
+
+            TeleportToTradeWorld()
         end
     end)
-   
-    task.spawn(function()
-        while true do
-            task.wait(0.5)
-            pcall(function()
-                local PGui = Player:WaitForChild("PlayerGui", 5)
-                if not PGui then return end
-                local FoundLoading = false
-                for _, g in pairs(PGui:GetChildren()) do
-                    if g:IsA("ScreenGui") and g.Enabled then
-                        local name = g.Name:lower()
-                        if name:find("loading") or name:find("intro") then FoundLoading = true end
-                    end
-                end
-                if FoundLoading then
-                    local Viewport = workspace.CurrentCamera.ViewportSize
-                    VirtualInputManager:SendMouseButtonEvent(Viewport.X/2, Viewport.Y/2, 0, true, game, 1)
-                    task.wait(0.1)
-                    VirtualInputManager:SendMouseButtonEvent(Viewport.X/2, Viewport.Y/2, 0, false, game, 1)
-                end
-            end)
-        end
-    end)
-    
-    Library:Notify("Loaded Successfully!", 5)
 end
 
--- [7] KEY AUTHENTICATION
-local function StartAuthentication()
-    local AuthURL = "https://script.google.com/macros/s/AKfycby5mTLL3T5JINUNIxnabGYFJ7rJP8AsQnDFOWdCPM_ZMQbverIf9mRI0TpEzbc6RJc1/exec" 
-    
-    local function GetHWID()
-        if gethwid then return gethwid() end
-        if syn and syn.request then return game:GetService("RbxAnalyticsService"):GetClientId() end
-        return game:GetService("RbxAnalyticsService"):GetClientId()
+
+--==================================================
+-- PET SNIPER TOGGLE
+--==================================================
+
+MainControls:AddToggle("EnablePetSniper", {
+    Text = "Enable Goon Sniper",
+    Default = false,
+}):OnChanged(function(enabled)
+    ScriptState.PetSniperEnabled = enabled
+
+    if enabled then
+        local session = NewPetSniperSession()
+
+        -- HUD session state
+        if HUDSessionLabel then
+            HUDSessionLabel.Text = "Session: Active"
+            HUDSessionLabel.TextColor3 = Color3.fromRGB(34, 242, 41)
+
+        end
+
+        SetSniperStatus("Idle")
+
+        task.spawn(function()
+            SniperMainLoop(session)
+        end)
+
+        StartTeleportCountdown(session, 60)
+
+        print("[PetSniper] Enabled. Session:", session)
+    else
+        -- HUD reset
+        if HUDSessionLabel then
+            HUDSessionLabel.Text = "Session: Inactive"
+            HUDSessionLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+
+        end
+
+        if HUDTeleportLabel then
+            HUDTeleportLabel.Text = "Teleport: —"
+        end
+
+        getgenv().SnipeLoop = -1
+        SetSniperStatus("OFF")
+
+        print("[PetSniper] Disabled.")
+    end
+end)
+
+--==================================================
+-- EMERGENCY STOP BUTTON 
+--==================================================
+MainControls:AddButton({
+    Text = "Emergency Stop",
+    Func = function()
+        print("Emergency stop pressed")
+    end,
+})
+--==================================================
+-- GOON SNIPER TAB (FILTER UI ONLY)
+--==================================================
+
+-- Persistent sniper filters
+ScriptState.SniperFilters = ScriptState.SniperFilters or {}
+
+local SniperControls = PetSniperTab:AddLeftGroupbox("Sniper")
+local WatchlistBox = PetSniperTab:AddLeftGroupbox("Active Watchlist")
+local WatchlistPageLabel = WatchlistBox:AddLabel("Page 1 / 1")
+local WatchlistEntries = {}
+local WatchlistEmptyLabel = WatchlistBox:AddLabel("• No active targets")
+WatchlistEmptyLabel:SetVisible(false)
+
+
+local SniperFiltersBox = PetSniperTab:AddRightGroupbox("Pet Filters")
+local ManageFiltersBox = PetSniperTab:AddRightGroupbox("Manage Filters")
+-- Status label mirror (read-only)
+SniperControls:AddLabel("idk")
+
+--==================================================
+-- ACTIVE WATCHLIST (LEFT SIDE)
+--==================================================
+
+local function RefreshActiveWatchlist()
+    -- Remove old dynamic labels
+    for _, entry in ipairs(WatchlistEntries) do
+        if entry and entry.Remove then
+            entry:Remove()
+        end
+    end
+    table.clear(WatchlistEntries)
+
+    local count = 0
+
+    -- Rebuild strictly from ScriptState.SniperFilters
+    for petId, filter in pairs(ScriptState.SniperFilters) do
+        count += 1
+
+        local text = string.format(
+            "• %s (%skg | %s)",
+            petId:gsub("^%l", string.upper),
+            tostring(filter.MinWeight or 0),
+            filter.MaxPrice == math.huge and "∞" or ("$" .. tostring(filter.MaxPrice))
+        )
+
+        local label = WatchlistBox:AddLabel(text)
+        table.insert(WatchlistEntries, label)
     end
 
-    local function ValidateKey(inputKey)
-        if inputKey == "" then return false end
-        local userHWID = GetHWID()
-        local requestUrl = AuthURL .. "?key=" .. inputKey .. "&hwid=" .. userHWID
-        local success, response = pcall(function() return game:HttpGet(requestUrl) end)
-        if success then
-            local status = string.gsub(response, "%s+", "")
-            if status == "AUTHORIZED" or status == "AUTHORIZED_LINKED" then return true
-            elseif status == "HWID_MISMATCH" then return "HWID_MISMATCH"
-            elseif status == "INVALID_KEY" then return false end
+    -- Empty state handling (ONE label only)
+    WatchlistEmptyLabel:SetVisible(count == 0)
+
+    WatchlistPageLabel:SetText("Page 1 / 1")
+end
+
+--==================================================
+-- MANAGE FILTERS — SEARCHABLE DROPDOWN (OBSIDIAN SAFE)
+--==================================================
+local ManageFilterDropdown = ManageFiltersBox:AddDropdown("ManageFilterSelect", {
+    Text = "Select Filter",
+    Values = {},
+    Default = "",
+    Searchable = true,
+})
+
+local function RefreshManageFilterDropdown()
+    local values = {}
+    local displayToPetId = {}
+
+    for petId, filter in pairs(ScriptState.SniperFilters) do
+        local label = string.format(
+            "%s | Min %s | Max %s",
+            petId,
+            tostring(filter.MinWeight or 0),
+            filter.MaxPrice == math.huge and "∞" or tostring(filter.MaxPrice)
+        )
+
+        table.insert(values, label)
+        displayToPetId[label] = petId
+    end
+
+    table.sort(values)
+
+    ManageFilterDropdown:SetValues(values)
+    ManageFilterDropdown:SetValue("")
+
+    -- store mapping on the dropdown itself (safe)
+    ManageFilterDropdown._displayToPetId = displayToPetId
+end
+
+---- Remove Selected
+ManageFiltersBox:AddButton({
+    Text = "Remove Selected",
+    Func = function()
+        local selectedLabel = ManageFilterDropdown.Value
+        if not selectedLabel or selectedLabel == "" then
+            warn("[ManageFilters] Nothing selected")
+            return
         end
+
+        local petId = ManageFilterDropdown._displayToPetId
+            and ManageFilterDropdown._displayToPetId[selectedLabel]
+
+        if not petId then
+            warn("[ManageFilters] Invalid selection")
+            return
+        end
+
+        -- THIS is the actual removal
+        ScriptState.SniperFilters[petId] = nil
+
+        -- FULL resync
+        RefreshManageFilterDropdown()
+        RefreshActiveWatchlist()
+    end
+})
+
+-- Remove all filters
+ManageFiltersBox:AddButton({
+    Text = "Remove ALL Filters",
+    Func = function()
+        table.clear(ScriptState.SniperFilters)
+
+        RefreshManageFilterDropdown()
+        RefreshActiveWatchlist() -- ADDED
+
+    end
+})
+
+-- Refresh dropdown manually
+ManageFiltersBox:AddButton({
+    Text = "Refresh List",
+    Func = function()
+        RefreshManageFilterDropdown()
+    end
+})
+--==================================================
+-- PET FILTERS — OBDISIAN-NATIVE SEARCHABLE DROPDOWN
+--==================================================
+
+local PetIds = {
+    'lobster','rainbowlobster','kiwi','bloodkiwi','mimic','capybara','sloth','dilo','rainbowdilo',
+    'peacock','cat','orangetabby','mooncat','pig','seaturtle','frog','echofrog','brontosaurus',
+    'queenbee','starfish','spinosaurus','rainbowspinosaurus','kitsune','ckitsune','rainbowckitsune',
+    'hyacinthmacaw','frenchfryferret','goldengoose','koi','seal','wasp','owl','nightowl','bloodowl',
+    'cookedowl','butterfly','trex','mole','pancakemole','turtle','baconpig','triceratops','golem',
+    'dragonfly','chickenzombie','raptor','redfox','meerkat','fennecfox','kappa','bunny','bagelbunny',
+    'packbee','bearbee','sushibear','tarantulahawk','spriggan','discobee','baldeagle','rooster',
+    'ostrich','gorillachef','raccoon','hotdog','rainbowhotdog','greenbean','ankylosaurus',
+    'rainbowankylosaurus','lemonlion','applegazelle','peachwasp','iguanodon','rainbowiguanodon',
+    'squirrel','dog','goldenlab','shibainu','parasaurolophus','rainbowparasaurolophus','snail',
+    'tanuki','orangutan','pachycephalo','rainbowpachycephalo','flamingo','bee','honeybee','petalbee',
+    'toucan','moth','crab','cockatrice','imp','pixie','pterodactyl','hamster','griffin',
+    'rainbowgriffin','giantant','redgiantant','raiju','phoenix','rainbowphoenix','tanchozuru','wisp',
+    'glimmeringsprite','seedling','sandsnake','drake','otter','luminoussprite','polarbear','robin',
+    'giantrobin','greymouse','brownmouse','mochimouse','marmot','sugarglider','barnowl',
+    'giantbarnowl','chipmunk','redsquirrel','spacesquirrel','swan','giantswan','grizzlybear',
+    'giantgrizzlybear','scarletmacaw','shroomie','rainbowshroomie','gnome','ladybug','football',
+    'deer','spotteddeer','elk','rainbowelk','panda','jackalope','badger','giantbadger',
+    'silvermonkey','dairycow','prayingmantis','woodpecker','salmon','mallard','redpanda',
+    'stegosaurus','hedgehog','bloodhedgehog','cardinal','hummingbird','treefrog','iguana',
+    'chimpanzee','tiger','silverdragonfly','giantsilverdragonfly','firefly','giantfirefly',
+    'mizuchi','rainbowmizuchi','hyrax','fortunesquirrel','chubbychipmunk','idolchipmunk',
+    'farmerchipmunk','axolotl','chinchilla','rainbowchinchilla','bat','ghostlybat','bonedog',
+    'ghostlybonedog','pumpkinrat','ghostbear','wolf','blackcat','ghostlyblackcat','reaper',
+    'spider','ghostlyspider','headlesshorseman','ghostlyheadlesshorseman','darkspriggan',
+    'ghostlydarkspriggan','goat','crow','goblin','hexserpent','scarab','ghostlyscarab','mummy',
+    'ghostlymummy','lich','tombmarmot','ghostlytombmarmot','woody','glasscat','glassdog',
+    'oxpecker','rainbowoxpecker','zebra','rainbowzebra','giraffe','rainbowgiraffe','rhino',
+    'rainbowrhino','elephant','rainbowelephant','hydra','rainbowhydra','specter',
+    'mantisshrimp','giantmantisshrimp'
+}
+
+
+local KnownWords = {
+    "rainbow","blood","giant","golden","silver","ghostly","dark","light",
+    "fire","ice","snow","frost","festive","hotdog","pancake"
+}
+
+local function FormatPetName(id)
+    local name = id
+    for _, w in ipairs(KnownWords) do
+        name = name:gsub(w, w .. " ")
+    end
+    name = name:gsub("%s+", " "):match("^%s*(.-)%s*$")
+    name = name:gsub("(%a)([%w_]*)", function(a,b)
+        return a:upper() .. b
+    end)
+    return name
+end
+
+local DropdownValues = {}
+local DisplayToId = {}
+
+for _, id in ipairs(PetIds) do
+    local display = FormatPetName(id)
+    table.insert(DropdownValues, display)
+    DisplayToId[display] = id
+end
+
+table.sort(DropdownValues)
+
+local SelectedPetId = nil
+
+local PetDropdown = SniperFiltersBox:AddDropdown("PetSelector", {
+    Text = "Select Pet",
+    Values = DropdownValues,
+    Default = "",
+    Searchable = true,
+})
+
+
+local MinWeightInput = SniperFiltersBox:AddInput("MinWeightInput", {
+    Text = "Min Weight (kg)",
+    Placeholder = "For Example 60",
+})
+
+local MaxTokensInput = SniperFiltersBox:AddInput("MaxTokensInput", {
+    Text = "Max Tokens",
+    Placeholder = "For Example 5000 Tokens",
+})
+
+SniperFiltersBox:AddButton({
+    Text = "Add Filter",
+    Func = function()
+        local selectedName = PetDropdown.Value
+        if not selectedName or selectedName == "" then
+            warn("[SniperFilters] No pet selected")
+            return
+        end
+
+        local petId = DisplayToId[selectedName]
+        if not petId then
+            warn("[SniperFilters] Invalid pet:", selectedName)
+            return
+        end
+
+        ScriptState.SniperFilters[petId] = {
+            MinWeight = tonumber(MinWeightInput.Value) or 0,
+            MaxPrice = tonumber(MaxTokensInput.Value) or math.huge
+        }
+        RefreshActiveWatchlist()
+        RefreshManageFilterDropdown()
+        print("[SniperFilters] Added:", petId)
+    end
+})
+
+
+--==================================================
+-- VISUALS TAB
+--==================================================
+
+local PetHUD = VisualsTab:AddLeftGroupbox("Pet HUD / Info")
+local GameVisuals = VisualsTab:AddRightGroupbox("Game Visuals")
+
+PetHUD:AddToggle("SniperHUDEnabled", {
+    Text = "Sniper Stats HUD",
+    Default = false,
+}):OnChanged(function(enabled)
+    ScriptState.SniperHUDEnabled = enabled
+    SniperHUDGui.Enabled = enabled
+end)
+
+
+PetHUD:AddToggle("ShowPetWeight", {
+    Text = "Show BaseWeight",
+    Default = true,
+})
+
+PetHUD:AddToggle("ShowFruitNames", {
+    Text = "Fruit Names",
+    Default = true,
+})
+
+PetHUD:AddToggle("RemoveWeather", {
+    Text = "Remove Weather / Visuals",
+    Default = false,
+})
+
+GameVisuals:AddButton({
+    Text = "Toggle HUD Elements",
+    Func = function()
+        local player = Players.LocalPlayer
+        local gui = player:FindFirstChild("PlayerGui")
+        if not gui then return end
+
+        -- List of HUD instances
+        local targets = {
+            gui:FindFirstChild("Hud_UI") and gui.Hud_UI:FindFirstChild("SideBtns") and gui.Hud_UI.SideBtns:FindFirstChild("Pass"),
+            gui:FindFirstChild("Hud_UI") and gui.Hud_UI:FindFirstChild("SideBtns") and gui.Hud_UI.SideBtns:FindFirstChild("GardenGuide"),
+            gui:FindFirstChild("Hud_UI") and gui.Hud_UI:FindFirstChild("SideBtns") and gui.Hud_UI.SideBtns:FindFirstChild("Trade"),
+            gui:FindFirstChild("Hud_UI") and gui.Hud_UI:FindFirstChild("SideBtns") and gui.Hud_UI.SideBtns:FindFirstChild("Shop"),
+
+            gui:FindFirstChild("Teleport_UI") and gui.Teleport_UI.Frame:FindFirstChild("Garden"),
+            gui:FindFirstChild("Teleport_UI") and gui.Teleport_UI.Frame:FindFirstChild("Sell"),
+            gui:FindFirstChild("Teleport_UI") and gui.Teleport_UI.Frame:FindFirstChild("Seeds"),
+
+            gui:FindFirstChild("TopbarStandard")
+                and gui.TopbarStandard.Holders
+                and gui.TopbarStandard.Holders.Right
+                and gui.TopbarStandard.Holders.Right:FindFirstChild("EVENT NOTIFY"),
+        }
+
+        ScriptState.HUDHidden = not ScriptState.HUDHidden
+
+        for _, inst in ipairs(targets) do
+            if inst then
+                if ScriptState._HUDCache[inst] == nil then
+                    ScriptState._HUDCache[inst] = inst.Visible
+                end
+                SetInstanceVisible(inst, not ScriptState.HUDHidden)
+            end
+        end
+
+        print("[Visuals] HUD hidden:", ScriptState.HUDHidden)
+    end,
+})
+
+--==================================================
+-- SETTINGS TAB
+--==================================================
+
+local SettingsGeneral = SettingsTab:AddLeftGroupbox("General")
+local SettingsUI = SettingsTab:AddRightGroupbox("UI")
+local SettingsPerformance = SettingsTab:AddLeftGroupbox("Performance")
+
+--==================================================
+-- SETTINGS → DEV TOOLS
+--==================================================
+
+local DevTools = SettingsTab:AddRightGroupbox("Dev Tools")
+
+DevTools:AddButton({
+    Text = "Cobalt",
+    Func = function()
+        local success, err = pcall(function()
+            loadstring(game:HttpGet(
+                "https://github.com/notpoiu/cobalt/releases/latest/download/Cobalt.luau"
+            ))()
+        end)
+
+        if not success then
+            warn("[DevTools] Cobalt failed to load:", err)
+        end
+    end,
+})
+
+DevTools:AddButton({
+    Text = "Dex",
+    Func = function()
+        loadstring(game:HttpGet(
+            "https://rawscripts.net/raw/Universal-Script-Keyless-dex-working-new-25658"
+        ))()
+    end,
+})
+
+MainControls:AddButton({
+    Text = "Rejoin Server",
+    Func = function()
+        local TeleportService = game:GetService("TeleportService")
+        TeleportService:Teleport(game.PlaceId)
+    end,
+})
+
+SettingsGeneral:AddToggle("AutoSave", {
+    Text = "Auto Save Config",
+    Default = true,
+})
+
+SettingsGeneral:AddButton({
+    Text = "Reset Config",
+    Func = function()
+        print("Reset config pressed")
+    end,
+})
+
+SettingsPerformance:AddToggle("PerformanceMode", {
+    Text = "Performance Mode",
+    Default = false,
+})
+
+SettingsPerformance:AddSlider("FPSLimit", {
+    Text = "FPS Limit",
+    Min = 30,
+    Max = 240,
+    Default = 60,
+})
+
+--==================================================
+-- SAVE + THEME MANAGERS
+--==================================================
+
+SaveManager:SetLibrary(Library)
+ThemeManager:SetLibrary(Library)
+
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({"SniperFilters"})
+
+ThemeManager:SetFolder("Goons")
+SaveManager:SetFolder("Goons")
+
+SaveManager:BuildConfigSection(SettingsTab)
+ThemeManager:ApplyToTab(SettingsTab)
+
+task.defer(RefreshManageFilterDropdown)
+--==================================================
+-- PET FILTER MATCH EVALUATION (READ-ONLY)
+--==================================================
+
+DoesListingMatchFilters = function(listing)
+    if not listing or not ScriptState.SniperFilters then
         return false
     end
 
-    if isfile and isfile(KeyFile) then
-        local SavedKey = readfile(KeyFile)
-        local status = ValidateKey(SavedKey)
-        if status == true then LoadObsidianUI() return end
+    local petName = listing.PetType or listing.PetName
+    if not petName then
+        return false
     end
 
-    if getgenv().AuthGui then getgenv().AuthGui:Destroy() end
-  
-    local AuthGui = Instance.new("ScreenGui")
-    AuthGui.Name = "GoonAuth"
-    AuthGui.Parent = PlayerGui
-    getgenv().AuthGui = AuthGui
+    local filter = ScriptState.SniperFilters[petName]
+    if not filter then
+        return false
+    end
 
-    local Frame = Instance.new("Frame")
-    Frame.Parent = AuthGui
-    Frame.Size = UDim2.new(0, 300, 0, 160)
-    Frame.Position = UDim2.new(0.5, -150, 0.5, -80)
-    Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
-    local Stroke = Instance.new("UIStroke");
-    Stroke.Parent = Frame; Stroke.Color = Color3.fromRGB(0, 255, 127); Stroke.Thickness = 2
-    
-    local Title = Instance.new("TextLabel")
-    Title.Parent = Frame
-    Title.Text = "AUTHENTICATION"
-    Title.TextColor3 = Color3.fromRGB(0, 255, 127)
-    Title.Size = UDim2.new(1, 0, 0, 30)
-    Title.BackgroundTransparency = 1
-    Title.Font = Enum.Font.GothamBlack
-    Title.TextSize = 18
+    local petWeight = listing.PetMax or listing.Weight or 0
+    local price = listing.Price or math.huge
 
-    local KeyBox = Instance.new("TextBox")
-    KeyBox.Parent = Frame
-    KeyBox.Size = UDim2.new(0.8, 0, 0, 35)
-    KeyBox.Position = UDim2.new(0.1, 0, 0.25, 0)
-    KeyBox.BackgroundColor3 = Color3.fromRGB(30,30,30)
-    KeyBox.TextColor3 = Color3.fromRGB(255,255,255)
-    KeyBox.PlaceholderText = "Enter Key..."
-    KeyBox.TextSize = 14
-    Instance.new("UICorner", KeyBox).CornerRadius = UDim.new(0,6)
+    if petWeight < (filter.MinWeight or 0) then
+        return false
+    end
 
-    if isfile and isfile(KeyFile) then KeyBox.Text = readfile(KeyFile) end
+    if price > (filter.MaxPrice or math.huge) then
+        return false
+    end
 
-    local LoginBtn = Instance.new("TextButton")
-    LoginBtn.Parent = Frame
-    LoginBtn.Text = "LOGIN"
-    LoginBtn.Size = UDim2.new(0.8, 0, 0, 35)
-    LoginBtn.Position = UDim2.new(0.1, 0, 0.55, 0)
-    LoginBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 127)
-    LoginBtn.TextColor3 = Color3.fromRGB(15,15,15)
-    LoginBtn.Font = Enum.Font.GothamBold
-    Instance.new("UICorner", LoginBtn).CornerRadius = UDim.new(0,6)
-
-    local StatusText = Instance.new("TextLabel")
-    StatusText.Parent = Frame
-    StatusText.Text = ""
-    StatusText.Size = UDim2.new(1, 0, 0, 20)
-    StatusText.Position = UDim2.new(0, 0, 0.85, 0)
-    StatusText.BackgroundTransparency = 1
-    StatusText.TextColor3 = Color3.fromRGB(255, 50, 50)
-    StatusText.Font = Enum.Font.GothamBold
-    StatusText.TextSize = 12
-
-    LoginBtn.MouseButton1Click:Connect(function()
-        LoginBtn.Text = "CHECKING..."
-        StatusText.Text = ""
-        local result = ValidateKey(KeyBox.Text)
-        if result == true then
-            if writefile then writefile(KeyFile, KeyBox.Text) end
-            AuthGui:Destroy()
-            LoadObsidianUI()
-        elseif result == "HWID_MISMATCH" then
-            LoginBtn.Text = "LOGIN FAILED"
-            StatusText.Text = "Key linked to another device!"
-            task.wait(2)
-            LoginBtn.Text = "LOGIN"
-        else
-            LoginBtn.Text = "INVALID KEY"
-            StatusText.Text = "Key does not exist."
-            task.wait(2)
-            LoginBtn.Text = "LOGIN"
-        end
-    end)
+    return true
 end
 
--- [8] START
-LoadData()
-LoadConfig()
-StartAuthentication()
+--==================================================
+-- PET SNIPER RUNTIME (OBSIDIAN SAFE)
+--==================================================
+
+
+
+local TradeController = require(
+    ReplicatedStorage.Modules.TradeBoothControllers.TradeBoothController
+)
+
+TryInitBoothData = function()
+    if getgenv().boothData then
+        return true
+    end
+
+    local fn = TradeController.GetPlayerBoothData
+    if type(fn) ~= "function" then
+        return false
+    end
+
+    local upvalues = getupvalues(fn)
+    if not upvalues or not upvalues[2] then
+        return false
+    end
+
+    local dataService = upvalues[2]
+    if type(dataService.GetDataAsync) ~= "function" then
+        return false
+    end
+
+    local ok, data = pcall(function()
+        return dataService:GetDataAsync()
+    end)
+
+    if ok and data then
+        getgenv().boothData = data
+        return true
+    end
+
+    return false
+end
+
+GetAllListings = function()
+    local Data = getgenv().boothData
+    if not Data or not Data.Booths then
+        return {}
+    end
+
+    local Listings = {}
+
+    for _, boothData in pairs(Data.Booths) do
+        if boothData.Owner then
+            local playerData = Data.Players and Data.Players[boothData.Owner]
+            if playerData and playerData.Listings then
+                for _, listing in pairs(playerData.Listings) do
+                    if listing.ItemType == "Pet" then
+                        table.insert(Listings, listing)
+                    end
+                end
+            end
+        end
+    end
+
+    return Listings
+end

@@ -2,9 +2,6 @@
 -- GOONS — Obsidian Base (Step 2)
 -- UI Elements Only (No Logic)
 --==================================================
---==================================================
--- SCRIPT STATE
---==================================================
 getgenv().SnipeLoop = getgenv().SnipeLoop or -1
 
 local ScriptState = {
@@ -13,11 +10,11 @@ local ScriptState = {
     -- Pet Sniper (wiring)
     PetSniperEnabled = false,
     PetSniperSession = 0,
+
+    -- autosave trigger (DO NOT REMOVE)
+    ConfigTouch = false,
 }
 
---==================================================
--- PET SNIPER STATUS HANDLER (OBSIDIAN SAFE)
---==================================================
 
 --==================================================
 -- PET SNIPER STATUS HANDLER (OBSIDIAN SAFE)
@@ -244,6 +241,7 @@ ScriptState._HUDCache = {}
 ScriptState.SniperHUDEnabled = false
 ScriptState.SniperTeleportSeconds = nil
 ScriptState.SniperRuntimeState = "Idle"
+ScriptState.TeleportDelay = 60 -- seconds (user configurable)
 
 
 --==================================================
@@ -390,7 +388,16 @@ local MainControls = MainTab:AddLeftGroupbox("Test")
 local StatusLabel = MainControls:AddLabel("Status: Idle")
 local SniperStatusLabel = MainControls:AddLabel("Sniper: OFF")
 
-
+MainControls:AddSlider("TeleportDelaySlider", {
+    Text = "Teleport Delay (seconds)",
+    Min = 5,
+    Max = 300,
+    Default = 60,
+    Rounding = 0,
+    Compact = false,
+}):OnChanged(function(value)
+    ScriptState.TeleportDelay = value
+end)
 
 MainControls:AddToggle("MasterEnable", {
     Text = "Enable Hatching",
@@ -476,10 +483,10 @@ local function StartTeleportCountdown(session, seconds)
             end
 
             if HUDTeleportLabel then
-                HUDTeleportLabel.Text = "Teleport in: " .. i .. "s"
+                HUDTeleportLabel.Text =
+                    string.format("Teleport in: %ds (delay %ds)", i, seconds)
                 HUDTeleportLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
                 HUDTeleportLabel.TextStrokeColor3 = Color3.fromRGB(60, 0, 0)
-
             end
 
             task.wait(1)
@@ -492,13 +499,13 @@ local function StartTeleportCountdown(session, seconds)
                 HUDTeleportLabel.Text = "TELEPORTING NOW"
                 HUDTeleportLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
                 HUDTeleportLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-
             end
 
             TeleportToTradeWorld()
         end
     end)
 end
+
 
 
 --==================================================
@@ -527,7 +534,7 @@ MainControls:AddToggle("EnablePetSniper", {
             SniperMainLoop(session)
         end)
 
-        StartTeleportCountdown(session, 60)
+        StartTeleportCountdown(session, ScriptState.TeleportDelay or 60)
 
         print("[PetSniper] Enabled. Session:", session)
     else
@@ -962,6 +969,14 @@ SaveManager:SetFolder("Goons")
 
 SaveManager:BuildConfigSection(SettingsTab)
 ThemeManager:ApplyToTab(SettingsTab)
+
+--==================================================
+-- FORCE INITIAL AUTOSAVE (ONE TIME)
+--==================================================
+
+task.defer(function()
+    ScriptState.ConfigTouch = not ScriptState.ConfigTouch
+end)
 
 task.defer(RefreshManageFilterDropdown)
 --==================================================

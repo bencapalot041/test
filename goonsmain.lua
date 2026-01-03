@@ -609,7 +609,7 @@ local function SetSniperStatus(state)
 	local map = {
 		OFF = '<font color="rgb(200,200,200)">OFF</font>',
 		Starting = '<font color="rgb(255,200,100)">⏳ Starting</font>',
-		Scanning = '<font color="rgb(120,200,255)">🔍 Scanning</font>',
+		Scanning = '<font color="rgb(11,5,246)">🔍 Scanning</font>',
 		Hopping = '<font color="rgb(247,0,12)">🌍 Server Hopping</font>',
 		Teleporting = '<font color="rgb(180,140,255)">🚀 Teleporting</font>',
 		["Waiting (auto-teleport)"] = '<font color="rgb(255,200,100)">⏳ Waiting</font>',

@@ -204,6 +204,7 @@ local PetList = {
     "Bacon Pig",
     "Barn Owl",
     "Bat",
+    "Bear on Bike",
     "Bear Bee",
     "Bearded Dragon",
     "Bee",
@@ -217,6 +218,7 @@ local PetList = {
     "Brown Mouse",
     "Buffalo",
     "Butterfly",
+    "Carnival Elephant",
     "Calico",
     "Camel",
     "Capybara",
@@ -353,6 +355,7 @@ local PetList = {
     "New Years Dragon",
     "Nihonzaru",
     "Nutcracker",
+    "Unicycle Monkey",
     "Orangutan",
     "Orange Tabby",
     "Ostrich",
@@ -366,6 +369,7 @@ local PetList = {
     "Peacock",
     "Penguin",
     "Petal Bee",
+    "Performer Seal",
     "Phoenix",
     "Pig",
     "Pixie",
@@ -421,6 +425,7 @@ local PetList = {
     "Seedling",
     "Shiba Inu",
     "Shroomie",
+    "Show Pony",
     "Silver Dragonfly",
     "Silver Monkey",
     "Silver Piggy",
@@ -531,6 +536,16 @@ local MainGroup = MainTab:AddLeftGroupbox("Main")
 
 local SniperStatusLabel = MainGroup:AddLabel("Status: OFF")
 local SniperScanLabel = MainGroup:AddLabel("Scanned Pets: 0")
+
+local InitialHopDelaySlider = MainGroup:AddSlider("InitialHopDelay", {
+	Text = "Server Hop Delay",
+	Default = 0,
+	Min = 0,
+	Max = 300,
+	Rounding = 0,
+	Suffix = "s",
+})
+
 
 local SniperToggle = MainGroup:AddToggle("EnableSniper", {
     Text = "Enable Sniper",
@@ -668,6 +683,8 @@ local function StartSniper()
 
 	Runtime.Running = true
 	Runtime.RequestHop = false
+    Runtime.StartTime = os.clock()
+    Runtime.FirstHopDone = false
 
 	getgenv().SnipeLoop = math.random(100000, 999999)
 
@@ -1006,6 +1023,18 @@ end
 
 
 local function ShouldHop(listings)
+    	-- INITIAL HOP DELAY (FIRST HOP ONLY)
+	if not Runtime.FirstHopDone then
+		local delayOpt = Library.Options.InitialHopDelay
+		local delay = delayOpt and tonumber(delayOpt.Value) or 0
+
+		if delay > 0 and Runtime.StartTime then
+			if os.clock() - Runtime.StartTime < delay then
+				return false
+			end
+		end
+	end
+
 	if not Runtime.Running then
 		return false
 	end
@@ -1139,7 +1168,7 @@ task.spawn(function()
 
 
 			pcall(Hop)
-
+            Runtime.FirstHopDone = true
 			-- prevent hop spam
 			task.wait(5)
 		end

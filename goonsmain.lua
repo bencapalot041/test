@@ -741,7 +741,7 @@ local function StopSniper()
 	end
 
 	print("[Sniper] STOP")
-	SetSniperStatus("OFF")
+	SetSniperStatus("Disabled")
 end
 
 
@@ -1023,17 +1023,21 @@ end
 
 
 local function ShouldHop(listings)
-    	-- INITIAL HOP DELAY (FIRST HOP ONLY)
+		-- INITIAL HOP DELAY STATUS (FIRST HOP ONLY)
 	if not Runtime.FirstHopDone then
 		local delayOpt = Library.Options.InitialHopDelay
 		local delay = delayOpt and tonumber(delayOpt.Value) or 0
 
 		if delay > 0 and Runtime.StartTime then
-			if os.clock() - Runtime.StartTime < delay then
+			local elapsed = os.clock() - Runtime.StartTime
+			if elapsed < delay then
+				local remaining = math.ceil(delay - elapsed)
+				SetSniperStatus("Waiting " .. remaining .. "s")
 				return false
 			end
 		end
 	end
+
 
 	if not Runtime.Running then
 		return false

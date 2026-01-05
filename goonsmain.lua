@@ -6,9 +6,103 @@
 --==================================================
 -- BOOTSTRAP [1]
 --==================================================
+local ExecutorName = "unknown"
+
+if identifyexecutor then
+    ExecutorName = identifyexecutor():lower()
+end
+
+local IS_DELTA    = ExecutorName:find("delta") ~= nil
+local IS_SELIWARE = ExecutorName:find("seli") ~= nil
+
+local function ExecLog(msg)
+    print(string.format("[GOONS | %s] %s", ExecutorName, msg))
+end
+
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
+
+--==================================================
+-- GLOBAL EXECUTION GATE (MANDATORY)
+--==================================================
+
+do
+    local Players = game:GetService("Players")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local player = Players.LocalPlayer
+
+    -- Player containers
+    player:WaitForChild("PlayerGui")
+    player:WaitForChild("Backpack")
+
+    -- Replicated structure
+    ReplicatedStorage:WaitForChild("Modules")
+    ReplicatedStorage.Modules:WaitForChild("TradeBoothControllers")
+    ReplicatedStorage.Modules.TradeBoothControllers:WaitForChild("TradeBoothController")
+
+    -- World container
+    while not workspace:FindFirstChild("TradeWorld") do
+        task.wait(0.1)
+    end
+
+    -- small stabilization buffer
+    task.wait(0.3)
+end
+
+--==================================================
+-- HARD CLIENT HYDRATION BARRIER (MANDATORY)
+--==================================================
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- wait for character + humanoid
+local function WaitForCharacter()
+    if LocalPlayer.Character then
+        return
+    end
+    LocalPlayer.CharacterAdded:Wait()
+end
+
+WaitForCharacter()
+
+local character = LocalPlayer.Character
+character:WaitForChild("Humanoid")
+
+-- wait for backpack + at least one tool
+local backpack = LocalPlayer:WaitForChild("Backpack")
+
+local function WaitForFirstPet(timeout)
+    local start = os.clock()
+    while os.clock() - start < timeout do
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") then
+                return true
+            end
+        end
+        task.wait(0.1)
+    end
+    return false
+end
+
+if not WaitForFirstPet(20) then
+    warn("[GOONS] Backpack tools not ready after 20s")
+end
+
+-- PRELOAD PET NAMES FOR DROPDOWN (MANDATORY)
+local InitialPetValues = {"None"}
+
+do
+    local backpack = LocalPlayer:WaitForChild("Backpack")
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") then
+            table.insert(InitialPetValues, tool.Name)
+        end
+    end
+    table.sort(InitialPetValues)
+end
+
 
 --==================================================
 -- LOAD OBSIDIAN CORE [2]
@@ -23,7 +117,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 --==================================================
 
 local Window = Library:CreateWindow({
-    Title = "Goons",
+    Title = "GOONS",
     Footer = "discord.gg/holygoons",
     Icon = "layers",
     Center = true,
@@ -40,6 +134,768 @@ local SniperTab      = Window:AddTab("Sniper")
 local TradeWorldTab  = Window:AddTab("Trade World")
 local VisualsTab     = Window:AddTab("Visuals")
 local SettingsTab    = Window:AddTab("Settings")
+
+--==================================================
+-- TRADE WORLD → AUTOMATION (UI ONLY, NO LOGIC)
+--==================================================
+
+-- Left side: Automation controls
+local TradeAutomationGroup = TradeWorldTab:AddLeftGroupbox("Automation")
+
+--==================================================
+-- TRADE WORLD → STATUS DASHBOARD (READ ONLY)
+--==================================================
+
+local TradeStatusGroup = TradeWorldTab:AddLeftGroupbox("Trade World Status")
+
+local TotalBoothsLabel   = TradeStatusGroup:AddLabel("Total Booths: -")
+local FreeBoothsLabel    = TradeStatusGroup:AddLabel("Free Booths: -")
+local TakenBoothsLabel   = TradeStatusGroup:AddLabel("Occupied Booths: -")
+local YourBoothLabel     = TradeStatusGroup:AddLabel("Your Booth: -")
+
+-- Persisted toggle (SaveManager will handle this automatically)
+local AutoClaimBoothToggle = TradeAutomationGroup:AddToggle("AutoClaimBooth", {
+    Text = "Auto Claim Booth",
+    Default = false,
+
+    Tooltip = "Automatically claims the first available booth when enabled.\nRequires a booth skin to be selected first.",
+})
+-- Persisted toggle: Auto Booth Position
+local AutoBoothPositionToggle = TradeAutomationGroup:AddToggle("AutoBoothPosition", {
+    Text = "Auto Booth Position",
+    Default = false,
+    Tooltip = "Automatically teleports you to your claimed booth.",
+})
+
+-- Right side: Booth customization
+local BoothCustomizationGroup = TradeWorldTab:AddRightGroupbox("Booth Customization")
+
+-- Persisted dropdown (values will be populated later)
+local BoothSkinDropdown = BoothCustomizationGroup:AddDropdown("BoothSkinSelect", {
+    Text = "Select Booth Skin",
+    Values = {Default}, -- Must be a real value
+    Default = "",
+    Searchable = true,
+})
+
+-- Persisted dropdown: Hold Pet
+local HoldPetDropdown = BoothCustomizationGroup:AddDropdown("HoldPetSelect", {
+    Text = "Auto Hold Pet",
+    Values = InitialPetValues,
+    Default = "None",
+    Searchable = true,
+})
+
+
+local BoothDistanceSlider = BoothCustomizationGroup:AddSlider("BoothDistance", {
+    Text = "Booth Distance",
+    Default = 12,
+    Min = 4,
+    Max = 26,
+    Rounding = 0,
+    Suffix = " studs",
+    Tooltip = "How far behind the booth you stand",
+})
+
+--==================================================
+-- HOLD PET → CONNECTION STATE (ANTI-DUPLICATE)
+--==================================================
+
+local HoldPetChangedConnection = nil
+local AutoHoldChangedConnection = nil
+local LastSelectedPet = "None"
+local LastEquippedPet = nil
+local HoldPetHydrated = false
+local HoldPetRestoring = false
+local PendingBoothTeleport = false
+
+--==================================================
+-- AUTO SAVE PET SELECT
+--==================================================
+local function TryRestoreHeldPet()
+    local opt = Library.Options.HoldPetSelect
+    if not opt or not opt.Value or opt.Value == "None" then
+        return
+    end
+
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not backpack then
+        return
+    end
+
+    local tool = backpack:FindFirstChild(opt.Value)
+    if not tool then
+        return -- tool not ready yet
+    end
+
+    -- prevent duplicate equip
+    if LastEquippedPet == opt.Value then
+        return
+    end
+
+    LastSelectedPet = opt.Value
+    task.defer(function()
+    HoldSelectedPet()
+end)
+end
+
+local function RestoreHoldPetUI()
+    local opt = Library.Options.HoldPetSelect
+    if not opt or not opt.Value or opt.Value == "None" then
+        return
+    end
+
+    -- ensure dropdown knows this value exists
+    local values = HoldPetDropdown.Values or {}
+    if not table.find(values, opt.Value) then
+        table.insert(values, opt.Value)
+        HoldPetDropdown:SetValues(values)
+    end
+
+    HoldPetDropdown:SetValue(opt.Value)
+    LastSelectedPet = opt.Value
+
+    -- equip once UI is synced
+    task.defer(TryRestoreHeldPet)
+end
+
+--==================================================
+-- STATIC BOOTH SKINS (UI ONLY)
+--==================================================
+
+local ALL_BOOTH_SKINS = {
+    "Default",
+    "Wood",
+    "Stone",
+    "Ice",
+    "Candy",
+    "Gold",
+    "Neon",
+    "Dark",
+    "Light",
+    "Autumn",
+    "Winter",
+    "Spring",
+    "Summer",
+    "Galaxy",
+    "Lava",
+    "Ocean",
+    "Forest",
+    "Desert",
+    "Crimson",
+    "Royal",
+}
+
+table.sort(ALL_BOOTH_SKINS)
+
+BoothSkinDropdown:SetValues(ALL_BOOTH_SKINS)
+BoothSkinDropdown:SetValue("Default")
+
+--==================================================
+-- TRADE WORLD → MANUAL CLAIM (PHASE 3, SAFE)
+--==================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+--==================================================
+-- TRADE BOOTH CONTROLLER (AUTHORITATIVE, UI PATH)
+--==================================================
+
+local TradeBoothController = require(
+    ReplicatedStorage
+        .Modules
+        .TradeBoothControllers
+        .TradeBoothController
+)
+
+
+--==================================================
+-- GOONS LOGGER (CLEAN CONSOLE OUTPUT)
+--==================================================
+
+local LOG_ENABLED = true
+
+local function Log(scope, message)
+    if not LOG_ENABLED then
+        return
+    end
+
+    print(string.format(
+        "[GOONS | %s] %s",
+        scope,
+        message
+    ))
+end
+
+local function Warn(scope, message)
+    warn(string.format(
+        "[GOONS | %s] %s",
+        scope,
+        message
+    ))
+end
+
+--==================================================
+-- TRADE WORLD → BOOTH & PET STATE
+--==================================================
+
+local BoothState = {
+    AutoPosition = false,
+    HasTeleported = false,
+
+    Distance = 12,
+    BehindDir = nil,
+    BoothCF = nil,
+    HalfDepth = nil,
+}
+
+--==================================================
+-- PET INVENTORY SCAN (BACKPACK)
+--==================================================
+
+local function GetBackpackPets()
+    local pets = {}
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not backpack then
+        return pets
+    end
+
+    for _, item in ipairs(backpack:GetChildren()) do
+        table.insert(pets, item.Name)
+    end
+
+    table.sort(pets)
+    return pets
+end
+
+--==================================================
+-- HOLD PET → TOOL EQUIP (AUTHORITATIVE, SINGLE)
+--==================================================
+local function HoldSelectedPet()
+    local opt = Library.Options.HoldPetSelect
+    
+    local petName = opt.Value
+if not petName or petName == "None" then
+    return
+end
+
+-- 🔒 debounce
+if petName == LastEquippedPet then
+    return
+    end
+
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not backpack then return end
+
+    -- 🔒 UNEQUIP ALL TOOLS FIRST (prevents multi-pet bug)
+    for _, tool in ipairs(character:GetChildren()) do
+        if tool:IsA("Tool") then
+            tool.Parent = backpack
+        end
+    end
+
+    -- 🔍 FIND SELECTED PET TOOL
+    local petTool = backpack:FindFirstChild(petName)
+    if not petTool or not petTool:IsA("Tool") then
+        Warn("HoldPet", "Pet tool not found: " .. petName)
+        return
+    end
+
+    -- ✅ EQUIP EXACTLY ONE PET
+    humanoid:EquipTool(petTool)
+    LastEquippedPet = petName
+    Log("HoldPet", "Equipped pet: " .. petName)
+end
+
+
+local function RefreshHoldPetDropdown()
+    if HoldPetRestoring then
+        return
+    end
+
+    local values = GetBackpackPets()
+    table.insert(values, 1, "None")
+
+    HoldPetDropdown:SetValues(values)
+end
+
+
+
+
+local function HookBackpack()
+    local backpack = LocalPlayer:WaitForChild("Backpack")
+
+    -- Initial fill (delayed, safe)
+    task.delay(0.2, RefreshHoldPetDropdown)
+
+    backpack.ChildAdded:Connect(function(child)
+    if child:IsA("Tool") then
+        task.wait()
+        RefreshHoldPetDropdown()
+        TryRestoreHeldPet()
+    end
+end)
+
+
+    backpack.ChildRemoved:Connect(function(child)
+        if child:IsA("Tool") then
+            task.wait()
+            RefreshHoldPetDropdown()
+        end
+    end)
+end
+
+local function OnCharacterAdded()
+    LastEquippedPet = nil
+    HookBackpack()
+end
+
+if LocalPlayer.Character then
+    OnCharacterAdded()
+end
+
+LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
+
+HoldPetDropdown:OnChanged(function()
+    local pet = HoldPetDropdown.Value or "None"
+
+    LastSelectedPet = pet
+    HoldSelectedPet()
+
+    -- 🔒 force SaveManager persistence
+    SaveManager:Save()
+end)
+--==================================================
+-- BOOTH ID RESOLUTION (AUTHORITATIVE)
+--==================================================
+
+local function GetMyBoothId()
+    local data = getgenv().boothData
+    if not data or not data.Booths then
+        return nil
+    end
+
+    local uid = tostring(LocalPlayer.UserId)
+
+    for boothId, booth in pairs(data.Booths) do
+        if booth.Owner and string.find(booth.Owner, uid) then
+            return boothId
+        end
+    end
+
+    return nil
+end
+
+
+-- UI-only Trade World readiness check (DOES NOT TOUCH SNIPER LOGIC)
+local function IsTradeWorldContextReady()
+    local tw = workspace:FindFirstChild("TradeWorld")
+    if not tw then
+        return false
+    end
+
+    local booths = tw:FindFirstChild("Booths")
+    if not booths then
+        return false
+    end
+
+    if not getgenv().boothData or not getgenv().boothData.Booths then
+        return false
+    end
+
+    return true
+end
+--==================================================
+-- TRADE WORLD STARTUP BARRIER (ONE-SHOT)
+--==================================================
+
+local TradeWorldReady = false
+
+task.spawn(function()
+    local start = os.clock()
+
+    while not IsTradeWorldContextReady() do
+        task.wait(0.2)
+
+        if os.clock() - start > 15 then
+            Warn("Startup", "TradeWorld readiness timeout")
+            return
+        end
+    end
+
+    -- critical delay to avoid Instance capability crash
+    task.wait(0.8)
+
+    TradeWorldReady = true
+    Log("Startup", "TradeWorld ready")
+end)
+
+
+-- Remotes (authoritative, confirmed by SPY)
+local EquipSkinEvent =
+    ReplicatedStorage.GameEvents.TradeBoothSkinService.Equip
+
+local ClaimBoothEvent =
+    ReplicatedStorage.GameEvents.TradeEvents.Booths.ClaimBooth
+
+
+    --==================================================
+-- BOOTH SKIN RESOLUTION (UI ONLY, SAFE)
+--==================================================
+
+local function GetOwnedBoothSkins()
+    local ok, data = pcall(function()
+        return require(game.ReplicatedStorage.Modules.DataService):GetData()
+    end)
+
+    if not ok or not data or not data.TradeData then
+        return {}
+    end
+
+    local skins = {}
+
+    if type(data.TradeData.BoothSkins) == "table" then
+        for skinName, owned in pairs(data.TradeData.BoothSkins) do
+            if owned == true then
+                table.insert(skins, skinName)
+            end
+        end
+    end
+
+    table.sort(skins)
+    return skins
+end
+
+
+-- Helper: first available unowned booth (MODE A)
+local function GetFirstUnownedBoothModel()
+    local data = getgenv().boothData
+    if not data or not data.Booths then
+        return nil
+    end
+
+    local boothsFolder =
+        workspace:FindFirstChild("TradeWorld")
+        and workspace.TradeWorld:FindFirstChild("Booths")
+
+    if not boothsFolder then
+        return nil
+    end
+
+    for boothId, boothInfo in pairs(data.Booths) do
+        if boothInfo.Owner == nil then
+            local boothModel = boothsFolder:FindFirstChild(boothId)
+            if boothModel then
+                return boothModel
+            end
+        end
+    end
+
+    return nil
+end
+--==================================================
+-- TRADE WORLD → DASHBOARD DATA
+--==================================================
+
+local function UpdateTradeWorldDashboard()
+    if not getgenv().boothData or not getgenv().boothData.Booths then
+        return
+    end
+
+    local booths = getgenv().boothData.Booths
+    local total = 0
+    local free = 0
+    local taken = 0
+    local myBooth = false
+
+    local myUserId = tostring(game.Players.LocalPlayer.UserId)
+
+    for _, booth in pairs(booths) do
+        total += 1
+
+        if booth.Owner == nil then
+            free += 1
+        else
+            taken += 1
+            if string.find(booth.Owner, myUserId) then
+                myBooth = true
+            end
+        end
+    end
+
+    TotalBoothsLabel:SetText("Total Booths: " .. total)
+    FreeBoothsLabel:SetText("Free Booths: " .. free)
+    TakenBoothsLabel:SetText("Occupied Booths: " .. taken)
+    YourBoothLabel:SetText(
+        myBooth and "Your Booth: Owned" or "Your Booth: None"
+    )
+end
+
+--==================================================
+-- TRADE WORLD → CLAIM EXECUTOR (UI SAFE)
+--==================================================
+
+local AutoClaimExecuted = false
+
+local function TryClaimBooth()
+    if AutoClaimExecuted then
+        return
+    end
+
+    if not IsTradeWorldContextReady() then
+        return
+    end
+
+    local skinOpt = Library.Options.BoothSkinSelect
+    local skinName = skinOpt and skinOpt.Value
+    if not skinName or skinName == "" then
+        Warn("AutoClaim", "No booth skin selected")
+        return
+    end
+
+    local boothModel = GetFirstUnownedBoothModel()
+    if not boothModel then
+        return
+    end
+
+    AutoClaimExecuted = true
+
+    Log("AutoClaim", "EquipSkin → " .. skinName)
+    EquipSkinEvent:FireServer(skinName)
+
+    task.wait(0.25)
+
+    Log("AutoClaim", "ClaimBooth → " .. boothModel.Name)
+    Log("AutoBooth", "FireServer(PlayerTeleportTriggered, Booth, false)")
+    ClaimBoothEvent:FireServer(boothModel)
+
+-- 🚀 mark teleport as pending immediately
+PendingBoothTeleport = true
+task.defer(function()
+    TryTeleportToBooth()
+end)
+end
+--==================================================
+-- BOOTH TELEPORT OFFSET HELPER (CLIENT-SIDE)
+--==================================================
+
+--==================================================
+-- FINAL BOOTH TELEPORT PLACEMENT (POSITION + ROTATION)
+--==================================================
+
+local function PlaceCharacterAtBooth(distance, isInitial)
+    local boothId = GetMyBoothId()
+    if not boothId then return end
+
+    local boothsFolder = workspace.TradeWorld and workspace.TradeWorld:FindFirstChild("Booths")
+    if not boothsFolder then return end
+
+    local boothModel = boothsFolder:FindFirstChild(boothId)
+    if not boothModel then return end
+
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local boothCF = boothModel.PrimaryPart
+        and boothModel.PrimaryPart.CFrame
+        or boothModel:GetPivot()
+
+    -- 🔒 INITIAL CALCULATION (ONLY ON FIRST TELEPORT)
+    -- 🔒 INITIAL CALCULATION (VALIDATED, SERVER-HOP SAFE)
+if isInitial or not BoothState.BehindDir then
+    BoothState.BoothCF = boothCF
+
+    local attempts = 0
+    local fromBooth = Vector3.zero
+
+    repeat
+        task.wait(0.05)
+        attempts += 1
+        fromBooth = hrp.Position - boothCF.Position
+    until fromBooth.Magnitude >= 3 or attempts >= 10
+
+    -- still too close → server teleport not settled
+    if fromBooth.Magnitude < 3 then
+        Warn("AutoBooth", "Initial direction invalid, retrying on next update")
+        BoothState.BehindDir = nil
+        BoothState.HasTeleported = false
+        return
+    end
+
+    BoothState.BehindDir = -fromBooth.Unit
+
+    local size = boothModel:GetExtentsSize()
+    BoothState.HalfDepth = size.Z / 2
+end
+
+
+    local targetPos =
+        BoothState.BoothCF.Position
+        + BoothState.BehindDir * (BoothState.HalfDepth + distance)
+
+    targetPos = Vector3.new(
+        targetPos.X,
+        hrp.Position.Y,
+        targetPos.Z
+    )
+
+    hrp.CFrame = CFrame.lookAt(
+        targetPos,
+        Vector3.new(
+            BoothState.BoothCF.Position.X,
+            hrp.Position.Y,
+            BoothState.BoothCF.Position.Z
+        )
+    )
+end
+
+Library.Options.BoothDistance:OnChanged(function()
+    local opt = Library.Options.BoothDistance
+    if not opt then return end
+
+    BoothState.Distance = tonumber(opt.Value) or BoothState.Distance
+
+    -- live adjust WITHOUT recalculating direction
+    if BoothState.HasTeleported and BoothState.BehindDir then
+        PlaceCharacterAtBooth(BoothState.Distance, false)
+    end
+end)
+
+
+--==================================================
+-- AUTO BOOTH POSITION (UI-AUTHORIZED TELEPORT)
+--==================================================
+
+local LastBoothTeleport = 0
+local BOOTH_TELEPORT_COOLDOWN = 1.5
+
+local function WaitForServerTeleport(hrp, timeout)
+    local start = os.clock()
+    local lastPos = hrp.Position
+
+    while os.clock() - start < timeout do
+        task.wait(0.05)
+
+        if (hrp.Position - lastPos).Magnitude < 0.05 then
+            return true
+        end
+
+        lastPos = hrp.Position
+    end
+
+    return false
+end
+
+local function TryTeleportToBooth()
+    -- 🔒 one-shot guard
+    if BoothState.HasTeleported then
+        return
+    end
+
+    if not BoothState.AutoPosition then
+        return
+    end
+
+    if not IsTradeWorldContextReady() then
+        return
+    end
+
+    local myBoothId = GetMyBoothId()
+-- allow immediate teleport right after claim
+if not myBoothId and not PendingBoothTeleport then
+    Log("AutoBooth", "Waiting for booth ownership")
+    return
+end
+
+
+    local now = os.clock()
+    if now - LastBoothTeleport < BOOTH_TELEPORT_COOLDOWN then
+        return
+    end
+
+    LastBoothTeleport = now
+    BoothState.HasTeleported = true -- ✅ LOCK AFTER FIRST TELEPORT
+    PendingBoothTeleport = false
+
+    Log("AutoBooth", "Teleport → Booth (one-shot)")
+
+    pcall(function()
+    TradeBoothController:TeleportToBooth()
+
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    local hrp = character:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return end
+
+    -- ⏳ wait until server finishes teleporting
+    if not WaitForServerTeleport(hrp, 2) then
+        Warn("AutoBooth", "Server teleport did not settle in time")
+        return
+    end
+
+    -- FINAL authoritative placement
+    PlaceCharacterAtBooth(BoothState.Distance, true)
+end)
+end
+
+
+--==================================================
+-- MANUAL BUTTON (ONE SHOT)
+--==================================================
+
+TradeAutomationGroup:AddButton({
+    Text = "Manually Claim Booth",
+    Func = function()
+        TryClaimBooth()
+    end,
+})
+
+--==================================================
+-- AUTO CLAIM TOGGLE WIRING (UI ONLY)
+--==================================================
+
+AutoClaimBoothToggle:OnChanged(function(enabled)
+    if not enabled then
+        return
+    end
+
+    -- reset per server
+    AutoClaimExecuted = false
+
+    task.spawn(function()
+        -- small delay to allow booth data to hydrate
+        task.wait(1)
+        TryClaimBooth()
+    end)
+end)
+
+--==================================================
+-- AUTO BOOTH POSITION TOGGLE WIRING
+--==================================================
+
+AutoBoothPositionToggle:OnChanged(function(enabled)
+    BoothState.AutoPosition = enabled
+
+    if enabled then
+        -- reset one-shot state
+        BoothState.HasTeleported = false
+        task.defer(function()
+    TryTeleportToBooth()
+end)
+    end
+end)
 
 --==================================================
 -- SNIPER FILTER STATE (RUNTIME, NO UI DEPENDENCY)
@@ -559,6 +1415,33 @@ MainGroup:AddButton({
         TeleportService:Teleport(game.PlaceId)
     end,
 })
+--==================================================
+-- UI FAILSAFE WATCHDOG (ANTI SILENT SHUTDOWN)
+--==================================================
+
+task.spawn(function()
+    while true do
+        task.wait(30) -- check every 30 seconds
+
+        -- Player left or script stopped
+        if not LocalPlayer or not LocalPlayer.Parent then
+            return
+        end
+
+        local gui = LocalPlayer:FindFirstChild("PlayerGui")
+        if not gui then
+            warn("[GOONS] PlayerGui missing → Rejoining")
+            TeleportService:Teleport(game.PlaceId)
+            return
+        end
+
+        if not gui:FindFirstChild("BackpackGui") then
+            warn("[GOONS] BackpackGui missing → Rejoining")
+            TeleportService:Teleport(game.PlaceId)
+            return
+        end
+    end
+end)
 
 
 --==================================================
@@ -601,7 +1484,7 @@ local Runtime = {
     RequestHop = false,
     MatchedCount = 0
 }
-
+local MainLoopReady = false
 
 local function SetSniperStatus(state)
 	if not SniperStatusLabel then return end
@@ -626,7 +1509,7 @@ local function SetScanCount(count)
 
 	SniperScanLabel:SetText(
 		string.format(
-			'<font color="rgb(101,254,0)">Scanned:</font> <b>%d</b>',
+			'<font color="rgb(0,167,0)">Scanned:</font> <b>%d</b>',
 			count
 		)
 	)
@@ -650,27 +1533,46 @@ local AUTO_TELEPORT_DELAY = 5
 
 local TeleportService = game:GetService("TeleportService")
 
-local function TeleportToTradingWorld()
-	if game.PlaceId == TRADING_WORLD_PLACE_ID then
-		return -- already there
-	end
+local function IsTradeWorldReady()
+    if game.PlaceId ~= TRADING_WORLD_PLACE_ID then
+        return false
+    end
 
-	print("[Sniper] Teleporting to Trading World in", AUTO_TELEPORT_DELAY, "seconds")
+    local tw = workspace:FindFirstChild("TradeWorld")
+    if not tw then
+        return false
+    end
 
-	task.wait(AUTO_TELEPORT_DELAY)
+    local booths = tw:FindFirstChild("Booths")
+    if not booths or #booths:GetChildren() == 0 then
+        return false
+    end
 
-	-- Sniper might have been disabled during delay
-	if not Runtime.Running then
-		print("[Sniper] Teleport cancelled (sniper disabled)")
-		return
-	end
+    if not getgenv().boothData or not getgenv().boothData.Booths then
+        return false
+    end
 
-	pcall(function()
-		TeleportService:Teleport(TRADING_WORLD_PLACE_ID)
-	end)
+    return true
 end
 
+local function TeleportToTradingWorld()
+    if game.PlaceId == TRADING_WORLD_PLACE_ID then
+        return
+    end
 
+    Log("Sniper", "Teleport → TradingWorld in " .. AUTO_TELEPORT_DELAY .. "s")
+
+    task.wait(AUTO_TELEPORT_DELAY)
+
+    if not Runtime.Running then
+        Log("Sniper", "Teleport → Cancelled (disabled)")
+        return
+    end
+
+    pcall(function()
+        TeleportService:Teleport(TRADING_WORLD_PLACE_ID)
+    end)
+end
 
 --==================================================
 -- SNIPER START / STOP (OBSIDIAN CONTROLLED)
@@ -710,7 +1612,11 @@ end
 			-- Only run sniper logic inside Trading World
 			if game.PlaceId == TRADING_WORLD_PLACE_ID then
 			SetSniperStatus("Scanning")
-			pcall(MainLoop)
+			local ok, err = pcall(MainLoop)
+if not ok then
+    Warn("Sniper", "MainLoop error: " .. tostring(err))
+end
+
 		end
 
 			task.wait(1)
@@ -758,7 +1664,33 @@ SniperToggle:OnChanged(function(value)
     end
 end)
 
+--==================================================
+-- SETTINGS TAB → DEV TOOLS
+--==================================================
 
+local DevToolsGroup = SettingsTab:AddLeftGroupbox("Dev Tools")
+
+DevToolsGroup:AddButton({
+	Text = "DEX",
+	Func = function()
+		pcall(function()
+			loadstring(game:HttpGet(
+				"https://rawscripts.net/raw/Universal-Script-Keyless-dex-working-new-25658"
+			))()
+		end)
+	end,
+})
+
+DevToolsGroup:AddButton({
+	Text = "SPY",
+	Func = function()
+		pcall(function()
+			loadstring(game:HttpGet(
+				"https://github.com/notpoiu/cobalt/releases/latest/download/Cobalt.luau"
+			))()
+		end)
+	end,
+})
 --==================================================
 -- SAVE MANAGER SETUP (OBSIDIAN CORRECT) [7]
 --==================================================
@@ -772,6 +1704,20 @@ SaveManager:SetFolder("Goons")
 
 SaveManager:BuildConfigSection(SettingsTab)
 SaveManager:LoadAutoloadConfig()
+
+task.defer(function()
+    task.wait(0.3)
+
+    local opt = Library.Options.HoldPetSelect
+    if opt and opt.Value and opt.Value ~= "None" then
+        LastSelectedPet = opt.Value
+        task.defer(function()
+    HoldSelectedPet()
+        end)
+    end
+end)
+
+
 
 --==================================================
 -- RESTORE FILTERS FROM SAVED CONFIG
@@ -829,7 +1775,7 @@ getgenv().historyTest = nil
 local player = game.Players.LocalPlayer
 
 local function Hop()
-	print("Init_ServerHop")
+	Log("Sniper", "ServerHop → Searching")
 	local Servers = {}
 	local function Scrape()
 		local URL = 'https://games.roblox.com/v1/games/'..tostring(129954712878723)..'/servers/Public?sortOrder=dsc&limit=100&excludeFullGames=true'
@@ -894,9 +1840,9 @@ local Controller = require(game:GetService("ReplicatedStorage").Modules.TradeBoo
 local v2 = require(game.ReplicatedStorage.Modules.DataService)
 
 if not getgenv().boothData then
-	print("InitBoothData")
+	Log("BoothData", "Initializing")
 	getgenv().boothData = getupvalues(Controller.GetPlayerBoothData)[2]:GetDataAsync()
-	print("INIT!")
+	Log("BoothData", "Initialized")
 end
 
 function getAllListings()
@@ -1058,6 +2004,7 @@ local function ShouldHop(listings)
 	return true -- nothing worth sniping
 end
 
+MainLoopReady = true
 function MainLoop()
 	local Listings = getAllListings()
 		-- update scan counter
@@ -1065,7 +2012,7 @@ function MainLoop()
     Runtime.MatchedCount = 0
 
 if ShouldHop(Listings) then
-	print("[Sniper] No viable targets, requesting hop")
+	Log("Sniper", "No viable targets → RequestHop")
 	SetSniperStatus("Hopping")
 	Runtime.RequestHop = true
 return
@@ -1111,7 +2058,11 @@ end
 			.GameEvents.TradeEvents.Booths
 			.BuyListing:InvokeServer(Data.Player, Data.ListingId)
 
-		print("ATTEMPTBUY:", success)
+		Log(
+    "Sniper",
+    success and "BuyAttempt → SUCCESS" or "BuyAttempt → FAILED"
+)
+
 
 		if success then
 	Sniped(Data.PetType, Data.PetWeight, Data.Price)
@@ -1167,7 +2118,7 @@ task.spawn(function()
 		if Runtime.Running and Runtime.RequestHop then
 			Runtime.RequestHop = false
 
-			print("[Sniper] Executing server hop (root thread)")
+			Log("Sniper", "ServerHop → Executing")
 			SetSniperStatus("Hopping")
 
 
@@ -1183,13 +2134,29 @@ end)
 local l_DataStream2_0 = game:GetService("ReplicatedStorage"):WaitForChild("GameEvents"):WaitForChild("DataStream2");
 getgenv().UpdateEvent = l_DataStream2_0.OnClientEvent:Connect(function(f, Name, Data)
 	if f=="UpdateData" and Name == "Booths" then
-		for Index,NewData in pairs(Data) do
-			local Path, Data = NewData[1], NewData[2]
-			setPathData(Path, Data)
-		end
-	end
+    for Index,NewData in pairs(Data) do
+        local Path, Data = NewData[1], NewData[2]
+        setPathData(Path, Data)
+    end
+
+    UpdateTradeWorldDashboard()
+    if TradeWorldReady then
+    task.defer(function()
+        TryTeleportToBooth()
+    end)
+end
+
+end
 end)
-print("UpdateEvent Hooked")
+Log("DataStream", "Booth updates hooked")
+task.spawn(function()
+    while not TradeWorldReady do
+        task.wait(0.1)
+    end
+
+    UpdateTradeWorldDashboard()
+end)
+
 
 if getconnections then
 	for _, connection in pairs(getconnections(game.Players.LocalPlayer.Idled)) do
